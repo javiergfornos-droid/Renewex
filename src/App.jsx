@@ -1,4 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import {
+  supabase, isSupabaseConfigured,
+  signIn, signUp, signOut, getProfile,
+  insertNBO, getMyNBOs, insertPurchase, getMyPurchases
+} from './supabaseClient';
 import { Search, MapPin, Zap, Wind, Sun, TrendingUp, Calendar, Building2, ChevronDown, X, Filter, ArrowUpRight, FileText, Send, User, LogOut, Settings, BarChart3, Activity, Shield, DollarSign, Check } from 'lucide-react';
 
 const developmentStages = [
@@ -192,26 +197,54 @@ const projects = [
     landSurface: 1600,
     landLeaseCost: 2100,
     developmentStage: "PPA Secured"
+  },
+  {
+    id: 15,
+    name: "Iberia O&M Services",
+    type: "O&M",
+    assetType: "company",
+    capacity: 850,            // MW under management (placeholder — financial model TBD)
+    location: "Madrid, Spain",
+    country: "Spain",
+    epcCost: 0,               // not an EPC asset; Enterprise Value TBD in financial model
+    distanceToSubstation: 0,
+    landSurface: null,
+    landLeaseCost: null,
+    developmentStage: "Operating Company",
+    // O&M-specific attributes — to be completed with the financial model
+    oem: {
+      mwUnderManagement: 850,
+      contractedMW: 0,         // TBD
+      avgContractTenor: null,  // years, TBD
+      ebitda: null,            // €, TBD
+      ebitdaMargin: null,      // %, TBD
+      availabilityGuarantee: null, // %, TBD
+      pricePerMwYear: null,    // €/MW/year, TBD
+      scope: "Preventive + corrective + asset management"
+    }
   }
 ];
 
 const typeIcons = {
   Solar: Sun,
-  Wind: Wind
+  Wind: Wind,
+  'O&M': Settings
 };
 
 const typeColors = {
   Solar: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30' },
-  Wind: { bg: 'bg-sky-500/10', text: 'text-sky-400', border: 'border-sky-500/30' }
+  Wind: { bg: 'bg-sky-500/10', text: 'text-sky-400', border: 'border-sky-500/30' },
+  'O&M': { bg: 'bg-[#00B89F]/10', text: 'text-[#00B89F]', border: 'border-[#00B89F]/30' }
 };
 
 const stageColors = {
   'Land Secured': 'bg-slate-500/20 text-slate-300 border-slate-500/30',
   'Environmental Permit': 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-  'Connection Secured': 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  'Construction Permit Secured': 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+  'Connection Secured': 'bg-[#00A88E]/20 text-[#33C9B5] border-[#00A88E]/30',
+  'Construction Permit Secured': 'bg-[#00B89F]/20 text-[#33C9B5] border-[#00B89F]/30',
   'PPA Secured': 'bg-green-500/20 text-green-300 border-green-500/30',
-  'Under Construction': 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+  'Under Construction': 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+  'Operating Company': 'bg-[#00B89F]/20 text-[#33C9B5] border-[#00B89F]/30'
 };
 
 function formatCurrency(amount) {
@@ -234,7 +267,7 @@ function ProjectCard({ project, onClick, hasNBO, isLoggedIn }) {
   return (
     <div 
       onClick={onClick}
-      className={`group relative bg-slate-800/50 backdrop-blur border rounded-2xl p-6 cursor-pointer transition-all duration-300 hover:bg-slate-800/80 hover:shadow-2xl hover:shadow-slate-900/50 hover:-translate-y-1 ${
+      className={`group relative bg-slate-800/50 backdrop-blur border rounded-2xl p-6 cursor-pointer transition-all duration-300 hover:bg-slate-800/80 hover:shadow-2xl hover:shadow-[#0c3941]/50 hover:-translate-y-1 ${
         hasNBO ? 'border-green-500/50 hover:border-green-400' : 'border-slate-700/50 hover:border-slate-600'
       }`}
     >
@@ -259,7 +292,7 @@ function ProjectCard({ project, onClick, hasNBO, isLoggedIn }) {
         </div>
       </div>
       
-      <h3 className="text-xl font-semibold text-white mb-2 group-hover:text-cyan-300 transition-colors">
+      <h3 className="text-xl font-semibold text-white mb-2 group-hover:text-[#33C9B5] transition-colors">
         {project.name}
       </h3>
       
@@ -268,44 +301,71 @@ function ProjectCard({ project, onClick, hasNBO, isLoggedIn }) {
         {project.location}
       </div>
       
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <div className="bg-slate-900/50 rounded-lg p-3">
-          <div className="text-slate-500 text-xs uppercase tracking-wide mb-1">Capacity</div>
-          <div className="text-white font-semibold flex items-center">
-            <Zap className="w-4 h-4 mr-1 text-cyan-400" />
-            {project.capacity} MW
+      {project.assetType === 'company' ? (
+        <>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="bg-[#0c3941]/50 rounded-lg p-3">
+              <div className="text-slate-500 text-xs uppercase tracking-wide mb-1">MW under mgmt</div>
+              <div className="text-white font-semibold flex items-center">
+                <Zap className="w-4 h-4 mr-1 text-[#00B89F]" />
+                {project.capacity} MW
+              </div>
+            </div>
+            <div className="bg-[#0c3941]/50 rounded-lg p-3">
+              <div className="text-slate-500 text-xs uppercase tracking-wide mb-1">Type</div>
+              <div className="text-white font-semibold flex items-center text-sm">
+                <Settings className="w-4 h-4 mr-1 text-[#00B89F]" />
+                O&M Company
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="bg-slate-900/50 rounded-lg p-3">
-          <div className="text-slate-500 text-xs uppercase tracking-wide mb-1">To Substation</div>
-          <div className="text-white font-semibold flex items-center">
-            <TrendingUp className="w-4 h-4 mr-1 text-green-400" />
-            {project.distanceToSubstation} km
+          <div className="bg-[#0c3941]/50 rounded-lg p-3 mb-4">
+            <div className="text-slate-500 text-xs uppercase tracking-wide mb-1">Scope</div>
+            <div className="text-white font-semibold text-sm">{project.oem?.scope || 'O&M services'}</div>
           </div>
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <div className="bg-slate-900/50 rounded-lg p-3">
-          <div className="text-slate-500 text-xs uppercase tracking-wide mb-1">Land Surface</div>
-          <div className="text-white font-semibold text-sm">
-            {project.landSurface ? `${project.landSurface} ha` : 'N/A'}
+        </>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="bg-[#0c3941]/50 rounded-lg p-3">
+              <div className="text-slate-500 text-xs uppercase tracking-wide mb-1">Capacity</div>
+              <div className="text-white font-semibold flex items-center">
+                <Zap className="w-4 h-4 mr-1 text-[#00B89F]" />
+                {project.capacity} MW
+              </div>
+            </div>
+            <div className="bg-[#0c3941]/50 rounded-lg p-3">
+              <div className="text-slate-500 text-xs uppercase tracking-wide mb-1">To Substation</div>
+              <div className="text-white font-semibold flex items-center">
+                <TrendingUp className="w-4 h-4 mr-1 text-green-400" />
+                {project.distanceToSubstation} km
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="bg-slate-900/50 rounded-lg p-3">
-          <div className="text-slate-500 text-xs uppercase tracking-wide mb-1">Land Lease</div>
-          <div className="text-white font-semibold text-sm">
-            {project.landLeaseCost ? `€${project.landLeaseCost}/ha/yr` : 'N/A'}
+          
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="bg-[#0c3941]/50 rounded-lg p-3">
+              <div className="text-slate-500 text-xs uppercase tracking-wide mb-1">Land Surface</div>
+              <div className="text-white font-semibold text-sm">
+                {project.landSurface ? `${project.landSurface} ha` : 'N/A'}
+              </div>
+            </div>
+            <div className="bg-[#0c3941]/50 rounded-lg p-3">
+              <div className="text-slate-500 text-xs uppercase tracking-wide mb-1">Land Lease</div>
+              <div className="text-white font-semibold text-sm">
+                {project.landLeaseCost ? `€${project.landLeaseCost}/ha/yr` : 'N/A'}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
       
       <div className="flex items-center justify-between pt-4 border-t border-slate-700/50">
         <div>
-          <div className="text-slate-500 text-xs uppercase tracking-wide">Est. EPC Cost</div>
-          <div className="text-lg font-bold text-cyan-300">{formatCurrency(project.epcCost)}</div>
+          <div className="text-slate-500 text-xs uppercase tracking-wide">{project.assetType === 'company' ? 'Enterprise Value' : 'Est. EPC Cost'}</div>
+          <div className="text-lg font-bold text-[#33C9B5]">{project.assetType === 'company' ? 'TBD' : formatCurrency(project.epcCost)}</div>
         </div>
-        <div className="flex items-center text-slate-400 group-hover:text-cyan-400 transition-colors">
+        <div className="flex items-center text-slate-400 group-hover:text-[#00B89F] transition-colors">
           {isLoggedIn ? (
             <>
               <span className="text-sm mr-1">View Details</span>
@@ -354,9 +414,9 @@ function ProjectModal({ project, onClose, onSubmitNBO, hasNBO }) {
   
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-slate-900 border border-slate-700 rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-8 py-6 flex items-center justify-between">
+      <div className="absolute inset-0 bg-[#06252b]/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-[#0c3941] border border-slate-700 rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-[#0c3941]/95 backdrop-blur border-b border-slate-800 px-8 py-6 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className={`p-3 rounded-xl ${colors.bg} ${colors.border} border`}>
               <Icon className={`w-6 h-6 ${colors.text}`} />
@@ -396,7 +456,7 @@ function ProjectModal({ project, onClose, onSubmitNBO, hasNBO }) {
                   <div key={stage} className="flex flex-col items-center flex-1">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold z-10 
                       ${index <= currentStageIndex 
-                        ? 'bg-cyan-500 text-slate-900' 
+                        ? 'bg-[#00B89F] text-[#0c3941]' 
                         : 'bg-slate-700 text-slate-500'}`}
                     >
                       {index + 1}
@@ -406,14 +466,14 @@ function ProjectModal({ project, onClose, onSubmitNBO, hasNBO }) {
               </div>
               <div className="absolute top-4 left-4 right-4 h-0.5 bg-slate-700 -z-0">
                 <div 
-                  className="h-full bg-cyan-500 transition-all duration-500"
+                  className="h-full bg-[#00B89F] transition-all duration-500"
                   style={{ width: `${(currentStageIndex / (developmentStages.length - 1)) * 100}%` }}
                 />
               </div>
               <div className="flex justify-between mt-2">
                 {developmentStages.map((stage, index) => (
                   <div key={stage} className="flex-1 text-center px-1">
-                    <span className={`text-xs ${index <= currentStageIndex ? 'text-cyan-400' : 'text-slate-500'}`}>
+                    <span className={`text-xs ${index <= currentStageIndex ? 'text-[#00B89F]' : 'text-slate-500'}`}>
                       {stage}
                     </span>
                   </div>
@@ -433,7 +493,7 @@ function ProjectModal({ project, onClose, onSubmitNBO, hasNBO }) {
           
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
             <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
-              <Zap className="w-5 h-5 text-cyan-400 mb-2" />
+              <Zap className="w-5 h-5 text-[#00B89F] mb-2" />
               <div className="text-slate-500 text-xs uppercase tracking-wide mb-1">Capacity</div>
               <div className="text-xl font-bold text-white">{project.capacity} MW</div>
             </div>
@@ -460,11 +520,11 @@ function ProjectModal({ project, onClose, onSubmitNBO, hasNBO }) {
             </div>
           </div>
           
-          <div className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/20 rounded-2xl p-6">
+          <div className="bg-gradient-to-r from-[#00B89F]/10 to-[#00A88E]/10 border border-[#00B89F]/20 rounded-2xl p-6">
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div>
                 <div className="text-slate-400 text-sm mb-1">Estimated EPC Cost</div>
-                <div className="text-3xl font-bold text-cyan-300">{formatCurrency(project.epcCost)}</div>
+                <div className="text-3xl font-bold text-[#33C9B5]">{formatCurrency(project.epcCost)}</div>
                 <div className="text-slate-500 text-sm mt-1">
                   €{(project.epcCost / project.capacity / 1000000).toFixed(2)}M per MW
                 </div>
@@ -493,7 +553,7 @@ function ProjectModal({ project, onClose, onSubmitNBO, hasNBO }) {
                 ) : (
                   <button 
                     onClick={() => onSubmitNBO(project)}
-                    className="px-5 py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold rounded-xl transition-colors flex items-center gap-2"
+                    className="px-5 py-3 bg-[#00B89F] hover:bg-[#00B89F] text-[#0c3941] font-semibold rounded-xl transition-colors flex items-center gap-2"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -650,8 +710,6 @@ export default function RenewableMarketplace() {
     password: '',
     role: '',
     institution: '',
-    courseCode: '',
-    teamName: '',
     acceptPrivacy: false,
     acceptDisclaimer: false,
     acceptTerms: false
@@ -660,12 +718,95 @@ export default function RenewableMarketplace() {
   const [showPassword, setShowPassword] = useState(false);
   const [registerSubmitted, setRegisterSubmitted] = useState(false);
 
-  // Simulated logged-in user
-  const user = {
-    name: registerForm.firstName || 'Training User',
-    email: registerForm.email || 'user@training.com',
-    avatar: null
-  };
+  // ---- Auth state (Supabase real con fallback demo) ----
+  const [currentUser, setCurrentUser] = useState(null);   // auth.users
+  const [profile, setProfile] = useState(null);           // fila de profiles (incluye role)
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+
+  // Usuario mostrado en la UI: real (perfil/metadata) o demo (formulario)
+  const user = useMemo(() => {
+    if (isSupabaseConfigured && currentUser) {
+      const meta = currentUser.user_metadata || {};
+      const first = profile?.first_name || meta.first_name || '';
+      const last = profile?.last_name || meta.last_name || '';
+      return {
+        name: [first, last].filter(Boolean).join(' ') || currentUser.email,
+        email: currentUser.email,
+        role: profile?.role || 'alumno',
+        institution: profile?.institution || meta.institution || '',
+        avatar: null,
+      };
+    }
+    return {
+      name: [registerForm.firstName, registerForm.lastName].filter(Boolean).join(' ') || 'Training User',
+      email: registerForm.email || 'user@training.com',
+      role: registerForm.role || 'alumno',
+      institution: registerForm.institution || '',
+      avatar: null,
+    };
+  }, [currentUser, profile, registerForm]);
+
+  const userRole = user.role;
+  const isStaff = userRole === 'profesor' || userRole === 'moderador';
+
+  // Carga la sesión al montar y escucha cambios de auth (login/logout en otras pestañas, refresh)
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let active = true;
+    const loadProfile = async (sessionUser) => {
+      if (!sessionUser) { setProfile(null); return; }
+      try {
+        const { data } = await getProfile(sessionUser.id);
+        if (active) setProfile(data || null);
+      } catch { if (active) setProfile(null); }
+    };
+    supabase.auth.getSession().then(({ data }) => {
+      const sUser = data?.session?.user || null;
+      if (!active) return;
+      setCurrentUser(sUser);
+      if (sUser) { setIsLoggedIn(true); setShowLandingPage(false); loadProfile(sUser); }
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      const sUser = session?.user || null;
+      setCurrentUser(sUser);
+      if (sUser) { setIsLoggedIn(true); loadProfile(sUser); }
+      else { setIsLoggedIn(false); setProfile(null); }
+    });
+    return () => { active = false; sub?.subscription?.unsubscribe?.(); };
+  }, []);
+
+  // Hidrata NBOs y compras del usuario desde Supabase al iniciar sesión
+  useEffect(() => {
+    if (!isSupabaseConfigured || !currentUser) return;
+    let active = true;
+    (async () => {
+      try {
+        const { data: nbos } = await getMyNBOs(currentUser.id);
+        if (active && Array.isArray(nbos)) {
+          setSubmittedNBOs(nbos.map(n => ({
+            projectId: n.project_id,
+            projectName: n.project_name,
+            clauses: n.clauses || [],
+            form: { priceValue: n.price_offered, priceUnit: n.price_unit,
+                    capacityReduction: n.capacity_discount,
+                    exclusivityMonths: n.exclusivity_months, validityDays: n.validity_days },
+            submittedAt: n.submitted_at,
+          })));
+        }
+      } catch (err) { console.warn('No se pudieron cargar las NBOs:', err?.message); }
+      try {
+        const { data: purchases } = await getMyPurchases(currentUser.id);
+        if (active && Array.isArray(purchases)) {
+          setPurchasedServices(purchases.map(p => ({
+            serviceId: p.service_id, country: p.country, purchasedAt: p.purchased_at,
+          })));
+        }
+      } catch (err) { console.warn('No se pudieron cargar las compras:', err?.message); }
+    })();
+    return () => { active = false; };
+  }, [currentUser]);
 
   const validateEmail = (email) => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -719,12 +860,14 @@ export default function RenewableMarketplace() {
     }
   };
 
-  const handleRegisterSubmit = (e) => {
+  const handleRegisterSubmit = async (e) => {
     e.preventDefault();
     setRegisterSubmitted(true);
-    
-    if (validateRegisterForm()) {
-      // Simulate successful registration
+    setAuthError('');
+    if (!validateRegisterForm()) return;
+
+    // Modo demo (sin Supabase): comportamiento simulado
+    if (!isSupabaseConfigured) {
       setIsLoggedIn(true);
       setShowRegisterModal(false);
       setShowPrivacyModal(false);
@@ -732,17 +875,78 @@ export default function RenewableMarketplace() {
       setShowDisclaimerModal(false);
       setShowLandingPage(false);
       setRegisterSubmitted(false);
+      return;
+    }
+
+    // Registro real contra Supabase (el rol lo asigna el trigger según la allowlist)
+    setAuthLoading(true);
+    try {
+      const { data, error } = await signUp({
+        email: registerForm.email.trim(),
+        password: registerForm.password,
+        firstName: registerForm.firstName.trim(),
+        lastName: registerForm.lastName.trim(),
+        institution: registerForm.institution.trim(),
+      });
+      if (error) {
+        setAuthError(error.message);
+      } else {
+        // Si la confirmación por email está desactivada, hay sesión inmediata
+        if (data?.session?.user) {
+          setShowRegisterModal(false);
+          setShowPrivacyModal(false);
+          setShowTermsModal(false);
+          setShowDisclaimerModal(false);
+          setShowLandingPage(false);
+        } else {
+          setAuthError('Registro recibido. Revisa tu correo para confirmar la cuenta antes de entrar.');
+        }
+        setRegisterSubmitted(false);
+      }
+    } catch (err) {
+      setAuthError('No se pudo completar el registro. Inténtalo de nuevo.');
+    } finally {
+      setAuthLoading(false);
     }
   };
 
-  const handleLogin = () => {
-    setIsLoggedIn(true);
-    setShowLoginModal(false);
-    setShowLandingPage(false);
+  const handleLogin = async () => {
+    setAuthError('');
+    // Modo demo
+    if (!isSupabaseConfigured) {
+      setIsLoggedIn(true);
+      setShowLoginModal(false);
+      setShowLandingPage(false);
+      return;
+    }
+    if (!loginForm.email.trim() || !loginForm.password) {
+      setAuthError('Introduce email y contraseña.');
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      const { error } = await signIn({ email: loginForm.email.trim(), password: loginForm.password });
+      if (error) {
+        setAuthError(error.message);
+      } else {
+        setShowLoginModal(false);
+        setShowLandingPage(false);
+        setLoginForm({ email: '', password: '' });
+      }
+    } catch (err) {
+      setAuthError('No se pudo iniciar sesión. Inténtalo de nuevo.');
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (isSupabaseConfigured) {
+      try { await signOut(); } catch { /* noop */ }
+    }
     setIsLoggedIn(false);
+    setCurrentUser(null);
+    setProfile(null);
     setShowUserMenu(false);
     setShowLoginModal(false);
     setShowRegisterModal(false);
@@ -750,6 +954,10 @@ export default function RenewableMarketplace() {
     setShowTermsModal(false);
     setShowDisclaimerModal(false);
     setShowLandingPage(true);
+    setSubmittedNBOs([]);
+    setPurchasedServices([]);
+    setAuthError('');
+    setLoginForm({ email: '', password: '' });
     setRegisterForm({
       firstName: '',
       lastName: '',
@@ -757,8 +965,6 @@ export default function RenewableMarketplace() {
       password: '',
       role: '',
       institution: '',
-      courseCode: '',
-      teamName: '',
       acceptPrivacy: false,
       acceptDisclaimer: false,
       acceptTerms: false
@@ -889,24 +1095,63 @@ export default function RenewableMarketplace() {
   };
 
   // NBO Clauses - placeholder data, to be customized later
-  const nboClauses = [
-    { id: 'cp1', category: 'Due Diligence', name: 'Satisfactory Technical Due Diligence', description: 'NBO subject to completion of technical due diligence to buyer\'s satisfaction.' },
-    { id: 'cp2', category: 'Due Diligence', name: 'Satisfactory Legal Due Diligence', description: 'NBO subject to completion of legal due diligence to buyer\'s satisfaction.' },
-    { id: 'cp3', category: 'Due Diligence', name: 'Satisfactory Environmental Due Diligence', description: 'NBO subject to completion of environmental assessments to buyer\'s satisfaction.' },
-    { id: 'cp4', category: 'Permits', name: 'All Permits in Place', description: 'NBO conditional on all required permits being obtained and in full force.' },
-    { id: 'cp5', category: 'Permits', name: 'Grid Connection Agreement', description: 'NBO conditional on executed grid connection agreement with the TSO/DSO.' },
-    { id: 'cp6', category: 'Commercial', name: 'PPA Execution', description: 'NBO subject to execution of PPA on terms acceptable to buyer.' },
-    { id: 'cp7', category: 'Commercial', name: 'Minimum IRR Threshold', description: 'NBO conditional on project achieving minimum target IRR.' },
-    { id: 'cp8', category: 'Commercial', name: 'EPC Contract on Acceptable Terms', description: 'NBO subject to EPC contract execution on terms acceptable to buyer.' },
-    { id: 'cp9', category: 'Financing', name: 'Board Approval', description: 'NBO subject to final investment committee / board approval.' },
-    { id: 'cp10', category: 'Financing', name: 'Financing Availability', description: 'NBO conditional on securing project financing on acceptable terms.' },
-    { id: 'cp11', category: 'Legal', name: 'No Material Adverse Change', description: 'NBO subject to no material adverse change occurring prior to closing.' },
-    { id: 'cp12', category: 'Legal', name: 'Exclusivity Period', description: 'Seller to grant exclusivity period for buyer to complete due diligence.' },
+  // Price-adjustment conditions (Section 4 of the NBO template)
+  const priceConditions = [
+    { id: 'pc_cap', category: 'Capacity', name: 'Adjustment for final authorised capacity', description: 'Price calculated on finally authorised & connected capacity (€/MWp × authorised MWp), adjusted up/down once confirmed.' },
+    { id: 'pc_capmin', category: 'Capacity', name: 'Minimum guaranteed capacity', description: 'Buyer assumes authorised capacity not lower than stated in the teaser.' },
+    { id: 'pc_yield', category: 'Production', name: 'Yield (P50) adjustment', description: 'Price conditional on assumed P50 yield; discrepancy validated in DD triggers price adjustment.' },
+    { id: 'pc_pr', category: 'Production', name: 'Minimum Performance Ratio (PR)', description: 'Minimum guaranteed PR.' },
+    { id: 'pc_ppa', category: 'Revenue', name: 'PPA execution', description: 'Offer conditional on execution of a PPA on acceptable terms.' },
+    { id: 'pc_merchant', category: 'Revenue', name: 'Merchant curve confirmed', description: 'Offer based on a market (merchant) price curve confirmed by an independent adviser.' },
+    { id: 'pc_epc', category: 'Revenue', name: 'EPC Right of First Refusal', description: 'Seller RoFR over EPC; EPC price set via competitive process.' },
+    { id: 'pc_lease', category: 'Other', name: 'Land lease cost as assumed', description: 'Land lease (€/ha/year) as assumed; deviations adjusted in EV.' },
+    { id: 'pc_icon', category: 'Other', name: 'Interconnection cost as assumed', description: 'Interconnection cost (€/MWp) as assumed.' },
+    { id: 'pc_life', category: 'Other', name: 'Useful life confirmed', description: 'Assumed useful life of the project confirmed.' },
   ];
+
+  // Payment milestones (Section 5)
+  const nboMilestones = [
+    { id: 'ms_land', name: 'Land leases + urban compatibility + grid access permit' },
+    { id: 'ms_dia', name: 'Environmental permit (DIA)' },
+    { id: 'ms_aac', name: 'Construction authorisation (AAC) + Public Interest (DUP)' },
+    { id: 'ms_rtb', name: 'Ready to Build (RTB)' },
+    { id: 'ms_cod', name: 'Commercial Operation Date (COD)' },
+  ];
+
+  // Conditions precedent (Section 6)
+  const nboClauses = [
+    { id: 'cp1', category: 'Development & Permits', name: 'All permits in full force', description: 'Environmental/DIA, construction authorisation (AAC) and DUP obtained and in force.' },
+    { id: 'cp2', category: 'Development & Permits', name: 'Firm grid access & connection', description: 'Firm grid access and connection permit with the TSO/DSO.' },
+    { id: 'cp3', category: 'Development & Permits', name: 'Secured land rights', description: 'Land leases signed, notarised and registered.' },
+    { id: 'cp4', category: 'Development & Permits', name: 'Ready to Build (RTB) status', description: 'RTB achieved with all development milestones completed.' },
+    { id: 'cp5', category: 'Development & Permits', name: 'Specific environmental condition', description: 'Specific environmental matter (e.g. birdlife) resolved before closing.' },
+    { id: 'cp6', category: 'Corporate & Approval', name: 'Satisfactory due diligence', description: 'Legal, tax, technical, financial and environmental DD to buyer satisfaction.' },
+    { id: 'cp7', category: 'Corporate & Approval', name: 'Investment Committee approval', description: 'Subject to Investment Committee approval.' },
+    { id: 'cp8', category: 'Corporate & Approval', name: 'Board approval', description: 'Subject to final approval of the fund\u2019s Board / governing body.' },
+    { id: 'cp9', category: 'Corporate & Approval', name: 'ABC / AML / KYC compliance', description: 'Compliance with anti-bribery, anti-money-laundering and KYC policies.' },
+    { id: 'cp10', category: 'Corporate & Approval', name: 'No Material Adverse Change', description: 'No material adverse change occurring prior to closing.' },
+    { id: 'cp11', category: 'Corporate & Approval', name: 'Market-standard documentation', description: 'SPA (and where applicable SHA/DSA) on market-standard terms.' },
+  ];
+
+  const emptyNboForm = {
+    priceValue: '', priceUnit: 'eur_wp',
+    spaPrice: '', dsaPrice: '',
+    paymentForm: 'single',
+    capacityReduction: '',
+    yieldP50: '', minPR: '',
+    energyPrice: '', energyType: 'ppa', ppaTerm: '',
+    usefulLife: '', leaseCost: '', interconnection: '',
+    priceConditions: [],
+    milestones: {},
+    financing: 'equity',
+    exclusivityMonths: '', validityDays: '',
+  };
+  const [nboForm, setNboForm] = useState(emptyNboForm);
 
   const handleOpenNBO = (project) => {
     setNboProject(project);
     setSelectedClauses([]);
+    setNboForm(emptyNboForm);
     setShowNBOModal(true);
   };
 
@@ -918,18 +1163,45 @@ export default function RenewableMarketplace() {
     );
   };
 
-  const handleSubmitNBO = () => {
-    if (nboProject && selectedClauses.length > 0) {
+  const setNbo = (field, value) => setNboForm(prev => ({ ...prev, [field]: value }));
+  const toggleNboPriceCond = (id) => setNboForm(prev => ({
+    ...prev,
+    priceConditions: prev.priceConditions.includes(id)
+      ? prev.priceConditions.filter(x => x !== id)
+      : [...prev.priceConditions, id]
+  }));
+  const setMilestone = (id, val) => setNboForm(prev => ({ ...prev, milestones: { ...prev.milestones, [id]: val } }));
+
+  const handleSubmitNBO = async () => {
+    if (nboProject && nboForm.priceValue) {
       setSubmittedNBOs(prev => [...prev, {
         projectId: nboProject.id,
         projectName: nboProject.name,
         clauses: selectedClauses,
+        form: nboForm,
         submittedAt: new Date().toISOString()
       }]);
+      // Persistencia en Supabase (best-effort; los campos del esquema)
+      if (isSupabaseConfigured && currentUser) {
+        try {
+          await insertNBO({
+            user_id: currentUser.id,
+            project_id: nboProject.id,
+            project_name: nboProject.name,
+            clauses: [...selectedClauses, ...nboForm.priceConditions],
+            price_offered: parseFloat(nboForm.priceValue) || null,
+            price_unit: nboForm.priceUnit === 'eur_wp' ? 'eur_wp' : 'eur_mw',
+            capacity_discount: nboForm.capacityReduction ? parseFloat(nboForm.capacityReduction) : null,
+            exclusivity_months: nboForm.exclusivityMonths ? parseInt(nboForm.exclusivityMonths, 10) : null,
+            validity_days: nboForm.validityDays ? parseInt(nboForm.validityDays, 10) : null,
+          });
+        } catch (err) { console.warn('No se pudo guardar la NBO en Supabase:', err?.message); }
+      }
       setShowNBOModal(false);
       setSelectedProject(null);
       setNboProject(null);
       setSelectedClauses([]);
+      setNboForm(emptyNboForm);
     }
   };
 
@@ -967,7 +1239,7 @@ export default function RenewableMarketplace() {
     }
   };
 
-  const confirmPurchase = () => {
+  const confirmPurchase = async () => {
     if (pendingPurchase) {
       setBudget(prev => prev - pendingPurchase.price);
       setPurchasedServices(prev => [...prev, { 
@@ -975,6 +1247,16 @@ export default function RenewableMarketplace() {
         country: pendingPurchase.country,
         purchasedAt: new Date().toISOString()
       }]);
+      if (isSupabaseConfigured && currentUser) {
+        try {
+          await insertPurchase({
+            user_id: currentUser.id,
+            service_id: pendingPurchase.serviceId,
+            country: pendingPurchase.country,
+            price: pendingPurchase.price,
+          });
+        } catch (err) { console.warn('No se pudo guardar la compra en Supabase:', err?.message); }
+      }
       setShowPurchaseConfirm(false);
       setPendingPurchase(null);
     }
@@ -1012,17 +1294,18 @@ export default function RenewableMarketplace() {
   const totalEPC = filteredProjects.reduce((sum, p) => sum + p.epcCost, 0);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-[#06252b] text-white">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
-        * { font-family: 'DM Sans', sans-serif; }
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+        * { font-family: 'Inter', sans-serif; }
+        h1, h2, h3, h4, .font-display { font-family: 'Space Grotesk', sans-serif; }
         .mono { font-family: 'Space Mono', monospace; }
       `}</style>
       
       {/* Ambient Background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#00B89F]/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-[#00A88E]/10 rounded-full blur-3xl" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-slate-800/20 rounded-full blur-3xl" />
       </div>
 
@@ -1031,7 +1314,7 @@ export default function RenewableMarketplace() {
         <div className="relative min-h-screen flex flex-col">
           {/* Background */}
           <div className="fixed inset-0 z-0">
-            <div className="absolute inset-0 bg-slate-900" />
+            <div className="absolute inset-0 bg-[#0c3941]" />
             <div 
               className="absolute inset-0 opacity-30"
               style={{
@@ -1043,20 +1326,20 @@ export default function RenewableMarketplace() {
                 `
               }}
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-slate-900/40 via-transparent to-slate-900/90" />
-            <div className="absolute bottom-0 left-0 right-0 h-1/2 bg-gradient-to-t from-slate-950 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-b from-[#0c3941]/40 via-transparent to-[#0c3941]/90" />
+            <div className="absolute bottom-0 left-0 right-0 h-1/2 bg-gradient-to-t from-[#06252b] to-transparent" />
           </div>
 
           {/* Landing Header */}
-          <header className="relative z-10 border-b border-slate-800/50 backdrop-blur-xl bg-slate-950/30">
+          <header className="relative z-10 border-b border-slate-800/50 backdrop-blur-xl bg-[#06252b]/30">
             <div className="max-w-7xl mx-auto px-6 py-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#00B89F] to-[#00A88E] flex items-center justify-center">
                     <Zap className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <h1 className="text-xl font-bold tracking-tight">RENEWEX</h1>
+                    <h1 className="text-xl font-bold tracking-tight font-display">RENEW<span className="text-[#00B89F]">EX</span></h1>
                     <p className="text-xs text-slate-500 uppercase tracking-widest">Energy Marketplace</p>
                   </div>
                 </div>
@@ -1069,7 +1352,7 @@ export default function RenewableMarketplace() {
                 <div className="flex items-center gap-3">
                   <button 
                     onClick={() => isLoggedIn ? setShowLandingPage(false) : setShowLoginModal(true)}
-                    className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-900 rounded-lg text-sm font-medium transition-colors"
+                    className="px-4 py-2 bg-[#00B89F] hover:bg-[#00B89F] text-[#0c3941] rounded-lg text-sm font-medium transition-colors"
                   >
                     Enter Platform
                   </button>
@@ -1082,15 +1365,15 @@ export default function RenewableMarketplace() {
           <div className="relative flex-1 flex items-center z-10">
             <div className="relative z-10 max-w-7xl mx-auto px-6 py-20 w-full">
               <div className="max-w-3xl">
-                <div className="inline-flex items-center gap-2 px-4 py-2 bg-cyan-500/10 border border-cyan-500/20 rounded-full text-cyan-400 text-sm mb-8">
-                  <span className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
+                <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#00B89F]/10 border border-[#00B89F]/20 rounded-full text-[#00B89F] text-sm mb-8">
+                  <span className="w-2 h-2 bg-[#00B89F] rounded-full animate-pulse" />
                   Educational Training Platform
                 </div>
                 
                 <h2 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
                   Utility-Scale
                   <br />
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400">
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#00B89F] to-[#33C9B5]">
                     Renewable Energy
                   </span>
                   <br />
@@ -1106,7 +1389,7 @@ export default function RenewableMarketplace() {
                 <div className="flex flex-col sm:flex-row gap-4 mb-16">
                   <button 
                     onClick={() => isLoggedIn ? setShowLandingPage(false) : setShowLoginModal(true)}
-                    className="px-8 py-4 bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold rounded-xl transition-colors text-lg flex items-center justify-center gap-2"
+                    className="px-8 py-4 bg-[#00B89F] hover:bg-[#00B89F] text-[#0c3941] font-semibold rounded-xl transition-colors text-lg flex items-center justify-center gap-2"
                   >
                     Start Simulation
                     <ArrowUpRight className="w-5 h-5" />
@@ -1121,21 +1404,21 @@ export default function RenewableMarketplace() {
 
                 {/* Feature Cards */}
                 <div className="grid sm:grid-cols-3 gap-4">
-                  <div className="p-5 bg-slate-900/60 backdrop-blur border border-slate-800 rounded-2xl">
+                  <div className="p-5 bg-[#0c3941]/60 backdrop-blur border border-slate-800 rounded-2xl">
                     <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center mb-3">
                       <Sun className="w-5 h-5 text-amber-400" />
                     </div>
                     <h3 className="font-semibold text-white mb-1">Solar Projects</h3>
                     <p className="text-sm text-slate-400">Ground-mounted PV installations across Europe</p>
                   </div>
-                  <div className="p-5 bg-slate-900/60 backdrop-blur border border-slate-800 rounded-2xl">
+                  <div className="p-5 bg-[#0c3941]/60 backdrop-blur border border-slate-800 rounded-2xl">
                     <div className="w-10 h-10 rounded-lg bg-sky-500/10 flex items-center justify-center mb-3">
                       <Wind className="w-5 h-5 text-sky-400" />
                     </div>
                     <h3 className="font-semibold text-white mb-1">Wind Projects</h3>
                     <p className="text-sm text-slate-400">Onshore wind farms in prime locations</p>
                   </div>
-                  <div className="p-5 bg-slate-900/60 backdrop-blur border border-slate-800 rounded-2xl">
+                  <div className="p-5 bg-[#0c3941]/60 backdrop-blur border border-slate-800 rounded-2xl">
                     <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center mb-3">
                       <TrendingUp className="w-5 h-5 text-green-400" />
                     </div>
@@ -1148,17 +1431,17 @@ export default function RenewableMarketplace() {
           </div>
 
           {/* Landing Footer */}
-          <footer className="relative z-10 border-t border-slate-800/50 bg-slate-950/80">
+          <footer className="relative z-10 border-t border-slate-800/50 bg-[#06252b]/80">
             <div className="max-w-7xl mx-auto px-6 py-12">
               <div className="grid md:grid-cols-4 gap-8 mb-8">
                 {/* Brand */}
                 <div className="md:col-span-1">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#00B89F] to-[#00A88E] flex items-center justify-center">
                       <Zap className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-bold">RENEWEX</h3>
+                      <h3 className="text-lg font-bold font-display">RENEW<span className="text-[#00B89F]">EX</span></h3>
                       <p className="text-xs text-slate-500 uppercase tracking-widest">Energy Marketplace</p>
                     </div>
                   </div>
@@ -1235,7 +1518,7 @@ export default function RenewableMarketplace() {
         <div className="relative min-h-screen flex flex-col">
           {/* Background */}
           <div className="fixed inset-0 z-0">
-            <div className="absolute inset-0 bg-slate-900" />
+            <div className="absolute inset-0 bg-[#0c3941]" />
             <div 
               className="absolute inset-0 opacity-20"
               style={{
@@ -1245,22 +1528,22 @@ export default function RenewableMarketplace() {
                 `
               }}
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-slate-900/40 via-transparent to-slate-950/90" />
+            <div className="absolute inset-0 bg-gradient-to-b from-[#0c3941]/40 via-transparent to-[#06252b]/90" />
           </div>
 
           {/* Header */}
-          <header className="relative z-10 border-b border-slate-800/50 backdrop-blur-xl bg-slate-950/30">
+          <header className="relative z-10 border-b border-slate-800/50 backdrop-blur-xl bg-[#06252b]/30">
             <div className="max-w-7xl mx-auto px-6 py-4">
               <div className="flex items-center justify-between">
                 <button 
                   onClick={() => setShowLearnMore(false)}
                   className="flex items-center gap-3 hover:opacity-80 transition-opacity"
                 >
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#00B89F] to-[#00A88E] flex items-center justify-center">
                     <Zap className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <h1 className="text-xl font-bold tracking-tight">RENEWEX</h1>
+                    <h1 className="text-xl font-bold tracking-tight font-display">RENEW<span className="text-[#00B89F]">EX</span></h1>
                     <p className="text-xs text-slate-500 uppercase tracking-widest">Energy Marketplace</p>
                   </div>
                 </button>
@@ -1287,7 +1570,7 @@ export default function RenewableMarketplace() {
               </p>
 
               {/* Game Overview */}
-              <div className="bg-slate-900/60 backdrop-blur border border-slate-700 rounded-2xl p-8 mb-8">
+              <div className="bg-[#0c3941]/60 backdrop-blur border border-slate-700 rounded-2xl p-8 mb-8">
                 <h2 className="text-2xl font-bold text-white mb-4">Game Overview</h2>
                 <p className="text-slate-300 leading-relaxed mb-4">
                   RENEWEX is an educational simulation that puts you in the role of a renewable energy investment analyst. 
@@ -1295,7 +1578,7 @@ export default function RenewableMarketplace() {
                   and submit competitive Non-Binding Offers (NBOs) for the most promising opportunities.
                 </p>
                 <p className="text-slate-300 leading-relaxed">
-                  You start with a budget of <span className="text-cyan-400 font-semibold">€2,000,000</span> to spend on 
+                  You start with a budget of <span className="text-[#00B89F] font-semibold">€2,000,000</span> to spend on 
                   analytical resources. Choose wisely—you cannot afford everything, so strategic prioritization is key.
                 </p>
               </div>
@@ -1304,9 +1587,9 @@ export default function RenewableMarketplace() {
               <div className="space-y-6 mb-12">
                 <h2 className="text-2xl font-bold text-white mb-6">Gameplay Steps</h2>
                 
-                <div className="flex gap-6 bg-slate-900/40 backdrop-blur border border-slate-700/50 rounded-xl p-6">
-                  <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center">
-                    <span className="text-cyan-400 font-bold text-xl">1</span>
+                <div className="flex gap-6 bg-[#0c3941]/40 backdrop-blur border border-slate-700/50 rounded-xl p-6">
+                  <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-[#00B89F]/20 border border-[#00B89F]/30 flex items-center justify-center">
+                    <span className="text-[#00B89F] font-bold text-xl">1</span>
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-white mb-2">Browse Projects</h3>
@@ -1317,9 +1600,9 @@ export default function RenewableMarketplace() {
                   </div>
                 </div>
 
-                <div className="flex gap-6 bg-slate-900/40 backdrop-blur border border-slate-700/50 rounded-xl p-6">
-                  <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center">
-                    <span className="text-cyan-400 font-bold text-xl">2</span>
+                <div className="flex gap-6 bg-[#0c3941]/40 backdrop-blur border border-slate-700/50 rounded-xl p-6">
+                  <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-[#00B89F]/20 border border-[#00B89F]/30 flex items-center justify-center">
+                    <span className="text-[#00B89F] font-bold text-xl">2</span>
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-white mb-2">Purchase Resources</h3>
@@ -1331,9 +1614,9 @@ export default function RenewableMarketplace() {
                   </div>
                 </div>
 
-                <div className="flex gap-6 bg-slate-900/40 backdrop-blur border border-slate-700/50 rounded-xl p-6">
-                  <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center">
-                    <span className="text-cyan-400 font-bold text-xl">3</span>
+                <div className="flex gap-6 bg-[#0c3941]/40 backdrop-blur border border-slate-700/50 rounded-xl p-6">
+                  <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-[#00B89F]/20 border border-[#00B89F]/30 flex items-center justify-center">
+                    <span className="text-[#00B89F] font-bold text-xl">3</span>
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-white mb-2">Analyze & Download Teasers</h3>
@@ -1344,9 +1627,9 @@ export default function RenewableMarketplace() {
                   </div>
                 </div>
 
-                <div className="flex gap-6 bg-slate-900/40 backdrop-blur border border-slate-700/50 rounded-xl p-6">
-                  <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center">
-                    <span className="text-cyan-400 font-bold text-xl">4</span>
+                <div className="flex gap-6 bg-[#0c3941]/40 backdrop-blur border border-slate-700/50 rounded-xl p-6">
+                  <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-[#00B89F]/20 border border-[#00B89F]/30 flex items-center justify-center">
+                    <span className="text-[#00B89F] font-bold text-xl">4</span>
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-white mb-2">Monitor Market News</h3>
@@ -1357,9 +1640,9 @@ export default function RenewableMarketplace() {
                   </div>
                 </div>
 
-                <div className="flex gap-6 bg-slate-900/40 backdrop-blur border border-slate-700/50 rounded-xl p-6">
-                  <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center">
-                    <span className="text-cyan-400 font-bold text-xl">5</span>
+                <div className="flex gap-6 bg-[#0c3941]/40 backdrop-blur border border-slate-700/50 rounded-xl p-6">
+                  <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-[#00B89F]/20 border border-[#00B89F]/30 flex items-center justify-center">
+                    <span className="text-[#00B89F] font-bold text-xl">5</span>
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-white mb-2">Submit NBOs</h3>
@@ -1373,27 +1656,27 @@ export default function RenewableMarketplace() {
               </div>
 
               {/* Tips */}
-              <div className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/20 rounded-2xl p-8 mb-12">
+              <div className="bg-gradient-to-r from-[#00B89F]/10 to-[#00A88E]/10 border border-[#00B89F]/20 rounded-2xl p-8 mb-12">
                 <h2 className="text-2xl font-bold text-white mb-4">Pro Tips</h2>
                 <ul className="space-y-3 text-slate-300">
                   <li className="flex items-start gap-3">
-                    <span className="text-cyan-400 mt-1">•</span>
+                    <span className="text-[#00B89F] mt-1">•</span>
                     <span>Focus your budget on 2-3 countries rather than spreading thin across all five.</span>
                   </li>
                   <li className="flex items-start gap-3">
-                    <span className="text-cyan-400 mt-1">•</span>
+                    <span className="text-[#00B89F] mt-1">•</span>
                     <span>Projects closer to "Under Construction" stage carry less development risk but may be more competitive.</span>
                   </li>
                   <li className="flex items-start gap-3">
-                    <span className="text-cyan-400 mt-1">•</span>
+                    <span className="text-[#00B89F] mt-1">•</span>
                     <span>Distance to substation significantly impacts project economics—shorter is better.</span>
                   </li>
                   <li className="flex items-start gap-3">
-                    <span className="text-cyan-400 mt-1">•</span>
+                    <span className="text-[#00B89F] mt-1">•</span>
                     <span>Read the news—regulatory changes can make or break a project's viability.</span>
                   </li>
                   <li className="flex items-start gap-3">
-                    <span className="text-cyan-400 mt-1">•</span>
+                    <span className="text-[#00B89F] mt-1">•</span>
                     <span>Don't forget to include appropriate conditions precedent in your NBOs to manage risk.</span>
                   </li>
                 </ul>
@@ -1410,7 +1693,7 @@ export default function RenewableMarketplace() {
                       setShowLoginModal(true);
                     }
                   }}
-                  className="px-8 py-4 bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold rounded-xl transition-colors text-lg inline-flex items-center gap-2"
+                  className="px-8 py-4 bg-[#00B89F] hover:bg-[#00B89F] text-[#0c3941] font-semibold rounded-xl transition-colors text-lg inline-flex items-center gap-2"
                 >
                   Start Playing
                   <ArrowUpRight className="w-5 h-5" />
@@ -1420,7 +1703,7 @@ export default function RenewableMarketplace() {
           </div>
 
           {/* Footer */}
-          <footer className="relative z-10 border-t border-slate-800/50 bg-slate-950/50 py-6 px-6">
+          <footer className="relative z-10 border-t border-slate-800/50 bg-[#06252b]/50 py-6 px-6">
             <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
               <div className="text-slate-500 text-sm">
                 © 2025 RENEWEX. Educational Platform.
@@ -1436,9 +1719,9 @@ export default function RenewableMarketplace() {
         </div>
       ) : (
         // Main Marketplace
-        <div className="relative min-h-screen bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950">
+        <div className="relative min-h-screen bg-gradient-to-b from-[#0c3941] via-[#0c3941] to-[#06252b]">
         {/* Header */}
-        <header className="border-b border-slate-700/50 backdrop-blur-xl bg-slate-900/80 sticky top-0 z-40">
+        <header className="border-b border-slate-700/50 backdrop-blur-xl bg-[#0c3941]/80 sticky top-0 z-40">
           <div className="max-w-7xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
               <button 
@@ -1452,24 +1735,24 @@ export default function RenewableMarketplace() {
                 }}
                 className="flex items-center gap-3 hover:opacity-80 transition-opacity"
               >
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#00B89F] to-[#00A88E] flex items-center justify-center">
                   <Zap className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold tracking-tight">RENEWEX</h1>
+                  <h1 className="text-xl font-bold tracking-tight font-display">RENEW<span className="text-[#00B89F]">EX</span></h1>
                   <p className="text-xs text-slate-500 uppercase tracking-widest">Energy Marketplace</p>
                 </div>
               </button>
               <nav className="hidden md:flex items-center gap-8">
                 <button 
                   onClick={() => isLoggedIn ? setActiveTab('projects') : setShowLoginModal(true)}
-                  className={`text-sm transition-colors ${activeTab === 'projects' ? 'text-cyan-400 font-medium' : 'text-slate-400 hover:text-white'}`}
+                  className={`text-sm transition-colors ${activeTab === 'projects' ? 'text-[#00B89F] font-medium' : 'text-slate-400 hover:text-white'}`}
                 >
                   Projects
                 </button>
                 <button 
                   onClick={() => isLoggedIn ? setActiveTab('bids') : setShowLoginModal(true)}
-                  className={`text-sm transition-colors flex items-center gap-1 ${activeTab === 'bids' ? 'text-cyan-400 font-medium' : 'text-slate-400 hover:text-white'}`}
+                  className={`text-sm transition-colors flex items-center gap-1 ${activeTab === 'bids' ? 'text-[#00B89F] font-medium' : 'text-slate-400 hover:text-white'}`}
                 >
                   Bids
                   {isLoggedIn && submittedNBOs.length > 0 && (
@@ -1480,7 +1763,7 @@ export default function RenewableMarketplace() {
                 </button>
                 <button 
                   onClick={() => isLoggedIn ? setActiveTab('news') : setShowLoginModal(true)}
-                  className={`text-sm transition-colors flex items-center gap-1 ${activeTab === 'news' ? 'text-cyan-400 font-medium' : 'text-slate-400 hover:text-white'}`}
+                  className={`text-sm transition-colors flex items-center gap-1 ${activeTab === 'news' ? 'text-[#00B89F] font-medium' : 'text-slate-400 hover:text-white'}`}
                 >
                   News
                   {isLoggedIn && newsItems.length - readNews.length > 0 && (
@@ -1491,7 +1774,7 @@ export default function RenewableMarketplace() {
                 </button>
                 <button 
                   onClick={() => isLoggedIn ? setActiveTab('resources') : setShowLoginModal(true)}
-                  className={`text-sm transition-colors ${activeTab === 'resources' ? 'text-cyan-400 font-medium' : 'text-slate-400 hover:text-white'}`}
+                  className={`text-sm transition-colors ${activeTab === 'resources' ? 'text-[#00B89F] font-medium' : 'text-slate-400 hover:text-white'}`}
                 >
                   Resources
                 </button>
@@ -1500,7 +1783,7 @@ export default function RenewableMarketplace() {
                 {isLoggedIn && (
                   <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg">
                     <span className="text-slate-500 text-sm">Budget:</span>
-                    <span className="text-cyan-400 font-bold">€{budget.toLocaleString()}</span>
+                    <span className="text-[#00B89F] font-bold">€{budget.toLocaleString()}</span>
                   </div>
                 )}
                 
@@ -1511,7 +1794,7 @@ export default function RenewableMarketplace() {
                       onClick={() => setShowUserMenu(!showUserMenu)}
                       className="flex items-center gap-3 px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
                     >
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-white text-sm font-bold">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00B89F] to-[#00A88E] flex items-center justify-center text-white text-sm font-bold">
                         {user.name.charAt(0)}
                       </div>
                       <div className="hidden md:block text-left">
@@ -1524,10 +1807,13 @@ export default function RenewableMarketplace() {
                     {showUserMenu && (
                       <>
                         <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
-                        <div className="absolute top-full right-0 mt-2 w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-xl z-50">
+                        <div className="absolute top-full right-0 mt-2 w-56 bg-[#0c3941] border border-slate-700 rounded-xl shadow-xl z-50">
                           <div className="p-4 border-b border-slate-800">
                             <div className="text-sm font-medium text-white">{user.name}</div>
                             <div className="text-xs text-slate-500">{user.email}</div>
+                            <span className={`inline-block mt-2 px-2 py-0.5 text-[10px] font-semibold rounded-full border ${userRole === 'profesor' ? 'bg-[#00B89F]/15 text-[#33C9B5] border-[#00B89F]/40' : userRole === 'moderador' ? 'bg-amber-500/15 text-amber-300 border-amber-500/40' : 'bg-slate-500/15 text-slate-300 border-slate-500/40'}`}>
+                              {userRole === 'profesor' ? 'Profesor' : userRole === 'moderador' ? 'Moderador' : 'Alumno'}
+                            </span>
                           </div>
                           <div className="py-2">
                             <button 
@@ -1581,7 +1867,7 @@ export default function RenewableMarketplace() {
                   /* Login Button */
                   <button 
                     onClick={() => setShowLoginModal(true)}
-                    className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-900 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                    className="px-4 py-2 bg-[#00B89F] hover:bg-[#00B89F] text-[#0c3941] rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
                   >
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
@@ -1602,12 +1888,12 @@ export default function RenewableMarketplace() {
             {/* Hero Section */}
             <section className="py-16 px-6">
               <div className="max-w-7xl mx-auto text-center">
-                <div className="inline-flex items-center gap-2 px-4 py-2 bg-cyan-500/10 border border-cyan-500/20 rounded-full text-cyan-400 text-sm mb-6">
-                  <span className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
+                <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#00B89F]/10 border border-[#00B89F]/20 rounded-full text-[#00B89F] text-sm mb-6">
+                  <span className="w-2 h-2 bg-[#00B89F] rounded-full animate-pulse" />
                   Live Marketplace
                 </div>
                 <h2 className="text-4xl md:text-5xl font-bold mb-4 leading-tight">
-                  Utility-Scale <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400">Renewable Energy</span>
+                  Utility-Scale <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#00B89F] to-[#33C9B5]">Renewable Energy</span>
                   <br />Project Marketplace
             </h2>
             <p className="text-slate-400 text-lg max-w-2xl mx-auto">
@@ -1621,19 +1907,19 @@ export default function RenewableMarketplace() {
         <section className="px-6 mb-12">
           <div className="max-w-7xl mx-auto">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-2xl p-6">
+              <div className="bg-[#0c3941]/50 backdrop-blur border border-slate-800 rounded-2xl p-6">
                 <div className="text-slate-500 text-sm mb-1">Active Projects</div>
                 <div className="text-3xl font-bold mono">{filteredProjects.length}</div>
               </div>
-              <div className="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-2xl p-6">
+              <div className="bg-[#0c3941]/50 backdrop-blur border border-slate-800 rounded-2xl p-6">
                 <div className="text-slate-500 text-sm mb-1">Total Capacity</div>
                 <div className="text-3xl font-bold mono">{(totalCapacity / 1000).toFixed(1)} <span className="text-lg text-slate-500">GW</span></div>
               </div>
-              <div className="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-2xl p-6">
+              <div className="bg-[#0c3941]/50 backdrop-blur border border-slate-800 rounded-2xl p-6">
                 <div className="text-slate-500 text-sm mb-1">Total EPC Cost</div>
-                <div className="text-3xl font-bold mono text-cyan-300">{formatCurrency(totalEPC)}</div>
+                <div className="text-3xl font-bold mono text-[#33C9B5]">{formatCurrency(totalEPC)}</div>
               </div>
-              <div className="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-2xl p-6">
+              <div className="bg-[#0c3941]/50 backdrop-blur border border-slate-800 rounded-2xl p-6">
                 <div className="text-slate-500 text-sm mb-1">NBOs Submitted</div>
                 <div className="text-3xl font-bold mono text-green-400">
                   {submittedNBOs.length}
@@ -1654,7 +1940,7 @@ export default function RenewableMarketplace() {
                   placeholder="Search projects, locations, developers..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                  className="w-full pl-12 pr-4 py-3 bg-[#0c3941]/50 border border-slate-700 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-[#00B89F] transition-colors"
                 />
               </div>
               
@@ -1671,7 +1957,7 @@ export default function RenewableMarketplace() {
                   <select 
                     value={selectedType}
                     onChange={(e) => setSelectedType(e.target.value)}
-                    className="appearance-none px-4 py-3 pr-10 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
+                    className="appearance-none px-4 py-3 pr-10 bg-[#0c3941]/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-[#00B89F] cursor-pointer"
                   >
                     <option value="All">All Types</option>
                     <option value="Solar">Solar</option>
@@ -1684,7 +1970,7 @@ export default function RenewableMarketplace() {
                   <select 
                     value={selectedCountry}
                     onChange={(e) => setSelectedCountry(e.target.value)}
-                    className="appearance-none px-4 py-3 pr-10 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
+                    className="appearance-none px-4 py-3 pr-10 bg-[#0c3941]/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-[#00B89F] cursor-pointer"
                   >
                     <option value="All">All Countries</option>
                     {countries.map(country => (
@@ -1698,7 +1984,7 @@ export default function RenewableMarketplace() {
                   <select 
                     value={selectedStage}
                     onChange={(e) => setSelectedStage(e.target.value)}
-                    className="appearance-none px-4 py-3 pr-10 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
+                    className="appearance-none px-4 py-3 pr-10 bg-[#0c3941]/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-[#00B89F] cursor-pointer"
                   >
                     <option value="All">All Stages</option>
                     {developmentStages.map(stage => (
@@ -1712,7 +1998,7 @@ export default function RenewableMarketplace() {
                   <select 
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
-                    className="appearance-none px-4 py-3 pr-10 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
+                    className="appearance-none px-4 py-3 pr-10 bg-[#0c3941]/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-[#00B89F] cursor-pointer"
                   >
                     <option value="capacity">Sort: Capacity</option>
                     <option value="epc">Sort: EPC Cost</option>
@@ -1746,7 +2032,7 @@ export default function RenewableMarketplace() {
                 <div className="text-slate-500 text-lg">No projects match your criteria</div>
                 <button 
                   onClick={() => { setSearchQuery(''); setSelectedType('All'); setSelectedStage('All'); setSelectedCountry('All'); }}
-                  className="mt-4 text-cyan-400 hover:text-cyan-300"
+                  className="mt-4 text-[#00B89F] hover:text-[#33C9B5]"
                 >
                   Clear filters
                 </button>
@@ -1766,15 +2052,15 @@ export default function RenewableMarketplace() {
                 <p className="text-slate-400">Top 12 projects ranked by number of bids submitted</p>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-                <div className="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-2xl p-6">
+                <div className="bg-[#0c3941]/50 backdrop-blur border border-slate-800 rounded-2xl p-6">
                   <div className="text-slate-500 text-sm mb-1">Total Bids</div>
-                  <div className="text-3xl font-bold text-cyan-400">{submittedNBOs.length}</div>
+                  <div className="text-3xl font-bold text-[#00B89F]">{submittedNBOs.length}</div>
                 </div>
-                <div className="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-2xl p-6">
+                <div className="bg-[#0c3941]/50 backdrop-blur border border-slate-800 rounded-2xl p-6">
                   <div className="text-slate-500 text-sm mb-1">Projects with Bids</div>
                   <div className="text-3xl font-bold text-green-400">{new Set(submittedNBOs.map(nbo => nbo.projectId)).size}</div>
                 </div>
-                <div className="bg-slate-900/50 backdrop-blur border border-slate-800 rounded-2xl p-6">
+                <div className="bg-[#0c3941]/50 backdrop-blur border border-slate-800 rounded-2xl p-6">
                   <div className="text-slate-500 text-sm mb-1">Your Bids</div>
                   <div className="text-3xl font-bold text-amber-400">{submittedNBOs.length}</div>
                 </div>
@@ -1792,11 +2078,11 @@ export default function RenewableMarketplace() {
                   }).slice(0, 12);
                   if (submittedNBOs.length === 0) {
                     return (
-                      <div className="text-center py-16 bg-slate-900/50 border border-slate-800 rounded-2xl">
+                      <div className="text-center py-16 bg-[#0c3941]/50 border border-slate-800 rounded-2xl">
                         <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mx-auto mb-4"><FileText className="w-8 h-8 text-slate-500" /></div>
                         <h3 className="text-lg font-semibold text-white mb-2">No bids submitted yet</h3>
                         <p className="text-slate-400 mb-4">Browse projects and submit your first Non-Binding Offer.</p>
-                        <button onClick={() => setActiveTab('projects')} className="px-6 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-medium rounded-lg transition-colors">Browse Projects</button>
+                        <button onClick={() => setActiveTab('projects')} className="px-6 py-2 bg-[#00B89F] hover:bg-[#00B89F] text-[#0c3941] font-medium rounded-lg transition-colors">Browse Projects</button>
                       </div>
                     );
                   }
@@ -1817,7 +2103,7 @@ export default function RenewableMarketplace() {
                           <p className="text-sm text-slate-400">{project.location} • {project.capacity} MW</p>
                         </div>
                         <div className="flex-shrink-0 text-right">
-                          <div className={`text-2xl font-bold ${project.bidCount > 0 ? 'text-cyan-400' : 'text-slate-500'}`}>{project.bidCount}</div>
+                          <div className={`text-2xl font-bold ${project.bidCount > 0 ? 'text-[#00B89F]' : 'text-slate-500'}`}>{project.bidCount}</div>
                           <div className="text-xs text-slate-500">{project.bidCount === 1 ? 'bid' : 'bids'}</div>
                         </div>
                       </div>
@@ -1840,11 +2126,11 @@ export default function RenewableMarketplace() {
                 </div>
                 <div className="text-right">
                   <div className="text-slate-500 text-xs uppercase tracking-wide">Read</div>
-                  <div className="text-lg font-bold text-cyan-400">{readNews.length} / {newsItems.length}</div>
+                  <div className="text-lg font-bold text-[#00B89F]">{readNews.length} / {newsItems.length}</div>
                 </div>
               </div>
               {selectedNews ? (
-                <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-8">
+                <div className="bg-[#0c3941]/50 border border-slate-800 rounded-2xl p-8">
                   <button onClick={() => setSelectedNews(null)} className="flex items-center gap-2 text-slate-400 hover:text-white mb-6 transition-colors">
                     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
                     Back to all news
@@ -1870,7 +2156,7 @@ export default function RenewableMarketplace() {
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-2">
-                              {!isRead && <span className="w-2 h-2 bg-cyan-400 rounded-full" />}
+                              {!isRead && <span className="w-2 h-2 bg-[#00B89F] rounded-full" />}
                               <span className="px-2 py-0.5 bg-slate-700 rounded text-xs text-slate-300">{news.category}</span>
                               <span className="px-2 py-0.5 bg-slate-700 rounded text-xs text-slate-300">{news.country}</span>
                               <span className="text-slate-500 text-xs">{news.date}</span>
@@ -1902,16 +2188,16 @@ export default function RenewableMarketplace() {
                 </div>
                 <div className="text-right">
                   <div className="text-slate-500 text-xs uppercase tracking-wide">Available Budget</div>
-                  <div className="text-2xl font-bold text-cyan-400">€{budget.toLocaleString()}</div>
+                  <div className="text-2xl font-bold text-[#00B89F]">€{budget.toLocaleString()}</div>
                 </div>
               </div>
               <div className="flex flex-wrap gap-2 mb-6">
                 {countries.map(country => {
                   const purchasedInCountry = baseServices.filter(s => isServicePurchased(s.id, country)).length;
                   return (
-                    <button key={country} onClick={() => setSelectedResourceCountry(country)} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${selectedResourceCountry === country ? 'bg-cyan-500 text-slate-900' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+                    <button key={country} onClick={() => setSelectedResourceCountry(country)} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${selectedResourceCountry === country ? 'bg-[#00B89F] text-[#0c3941]' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
                       <span>{countryFlags[country]}</span><span>{country}</span>
-                      {purchasedInCountry > 0 && <span className={`px-1.5 py-0.5 rounded text-xs ${selectedResourceCountry === country ? 'bg-slate-900/30 text-slate-900' : 'bg-cyan-500/20 text-cyan-400'}`}>{purchasedInCountry}/6</span>}
+                      {purchasedInCountry > 0 && <span className={`px-1.5 py-0.5 rounded text-xs ${selectedResourceCountry === country ? 'bg-[#0c3941]/30 text-[#0c3941]' : 'bg-[#00B89F]/20 text-[#00B89F]'}`}>{purchasedInCountry}/6</span>}
                     </button>
                   );
                 })}
@@ -1931,14 +2217,14 @@ export default function RenewableMarketplace() {
                         </div>
                       </div>
                       <div className="flex items-center justify-between">
-                        <div className={`text-xl font-bold ${isPurchased ? 'text-green-400' : 'text-cyan-400'}`}>€{price.toLocaleString()}</div>
+                        <div className={`text-xl font-bold ${isPurchased ? 'text-green-400' : 'text-[#00B89F]'}`}>€{price.toLocaleString()}</div>
                         {isPurchased ? (
-                          <button className="px-4 py-2 bg-green-500 hover:bg-green-400 text-slate-900 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
+                          <button className="px-4 py-2 bg-green-500 hover:bg-green-400 text-[#0c3941] rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
                             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                             Download Document
                           </button>
                         ) : (
-                          <button onClick={() => handlePurchaseService(service.id, selectedResourceCountry, price, service.name)} disabled={!canAfford} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${canAfford ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-900' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}>{canAfford ? 'Purchase' : 'Insufficient Budget'}</button>
+                          <button onClick={() => handlePurchaseService(service.id, selectedResourceCountry, price, service.name)} disabled={!canAfford} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${canAfford ? 'bg-[#00B89F] hover:bg-[#00B89F] text-[#0c3941]' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}>{canAfford ? 'Purchase' : 'Insufficient Budget'}</button>
                         )}
                       </div>
                     </div>
@@ -1957,7 +2243,7 @@ export default function RenewableMarketplace() {
                       return (
                         <div key={country} className="flex items-start gap-3">
                           <span className="text-xl">{countryFlags[country]}</span>
-                          <div className="flex flex-wrap gap-2">{countryServices.map(service => (<span key={service.id} className="px-3 py-1 bg-cyan-500/20 text-cyan-400 rounded-full text-sm">{service.name}</span>))}</div>
+                          <div className="flex flex-wrap gap-2">{countryServices.map(service => (<span key={service.id} className="px-3 py-1 bg-[#00B89F]/20 text-[#00B89F] rounded-full text-sm">{service.name}</span>))}</div>
                         </div>
                       );
                     })}
@@ -1973,18 +2259,23 @@ export default function RenewableMarketplace() {
           <section className="py-12 px-6 min-h-[60vh]">
             <div className="max-w-4xl mx-auto">
               {/* Profile Header */}
-              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-8 mb-8">
+              <div className="bg-[#0c3941]/50 border border-slate-800 rounded-2xl p-8 mb-8">
                 <div className="flex items-start gap-6">
-                  <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-white text-3xl font-bold">
+                  <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-[#00B89F] to-[#00A88E] flex items-center justify-center text-white text-3xl font-bold">
                     {user.name.charAt(0)}
                   </div>
                   <div className="flex-1">
-                    <h2 className="text-2xl font-bold text-white mb-1">{user.name}</h2>
-                    <p className="text-slate-400 mb-4">{user.email}</p>
+                    <div className="flex items-center gap-3 mb-1">
+                      <h2 className="text-2xl font-bold text-white">{user.name}</h2>
+                      <span className={`px-2.5 py-0.5 text-xs font-semibold rounded-full border ${userRole === 'profesor' ? 'bg-[#00B89F]/15 text-[#33C9B5] border-[#00B89F]/40' : userRole === 'moderador' ? 'bg-amber-500/15 text-amber-300 border-amber-500/40' : 'bg-slate-500/15 text-slate-300 border-slate-500/40'}`}>
+                        {userRole === 'profesor' ? 'Profesor' : userRole === 'moderador' ? 'Moderador' : 'Alumno'}
+                      </span>
+                    </div>
+                    <p className="text-slate-400 mb-4">{user.email}{user.institution ? ` · ${user.institution}` : ''}</p>
                     <div className="flex flex-wrap gap-4">
                       <div className="bg-slate-800/50 rounded-lg px-4 py-2">
                         <div className="text-xs text-slate-500 uppercase tracking-wide">Available Budget</div>
-                        <div className="text-lg font-bold text-cyan-400">€{budget.toLocaleString()}</div>
+                        <div className="text-lg font-bold text-[#00B89F]">€{budget.toLocaleString()}</div>
                       </div>
                       <div className="bg-slate-800/50 rounded-lg px-4 py-2">
                         <div className="text-xs text-slate-500 uppercase tracking-wide">NBOs Submitted</div>
@@ -2000,7 +2291,7 @@ export default function RenewableMarketplace() {
               </div>
 
               {/* Documents Section */}
-              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 mb-8">
+              <div className="bg-[#0c3941]/50 border border-slate-800 rounded-2xl p-6 mb-8">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-xl font-bold text-white">My Documents</h3>
                   <span className="px-3 py-1 bg-slate-700 rounded-full text-sm text-slate-300">{purchasedServices.length} documents</span>
@@ -2011,7 +2302,7 @@ export default function RenewableMarketplace() {
                       <FileText className="w-6 h-6 text-slate-500" />
                     </div>
                     <p className="text-slate-400">No documents purchased yet.</p>
-                    <button onClick={() => setActiveTab('resources')} className="mt-3 text-cyan-400 hover:text-cyan-300 text-sm">Browse Resources →</button>
+                    <button onClick={() => setActiveTab('resources')} className="mt-3 text-[#00B89F] hover:text-[#33C9B5] text-sm">Browse Resources →</button>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -2030,7 +2321,7 @@ export default function RenewableMarketplace() {
                               <p className="text-sm text-slate-400">{countryFlags[purchase.country]} {purchase.country}</p>
                             </div>
                           </div>
-                          <button className="px-4 py-2 bg-green-500 hover:bg-green-400 text-slate-900 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
+                          <button className="px-4 py-2 bg-green-500 hover:bg-green-400 text-[#0c3941] rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
                             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                             Download
                           </button>
@@ -2042,7 +2333,7 @@ export default function RenewableMarketplace() {
               </div>
 
               {/* NBOs Section */}
-              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+              <div className="bg-[#0c3941]/50 border border-slate-800 rounded-2xl p-6">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-xl font-bold text-white">My Non-Binding Offers</h3>
                   <span className="px-3 py-1 bg-slate-700 rounded-full text-sm text-slate-300">{submittedNBOs.length} NBOs</span>
@@ -2053,7 +2344,7 @@ export default function RenewableMarketplace() {
                       <Send className="w-6 h-6 text-slate-500" />
                     </div>
                     <p className="text-slate-400">No NBOs submitted yet.</p>
-                    <button onClick={() => setActiveTab('projects')} className="mt-3 text-cyan-400 hover:text-cyan-300 text-sm">Browse Projects →</button>
+                    <button onClick={() => setActiveTab('projects')} className="mt-3 text-[#00B89F] hover:text-[#33C9B5] text-sm">Browse Projects →</button>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -2090,12 +2381,12 @@ export default function RenewableMarketplace() {
         )}
 
         {/* Footer */}
-        <footer className="border-t border-slate-700/50 bg-slate-900/80">
+        <footer className="border-t border-slate-700/50 bg-[#0c3941]/80">
           <div className="max-w-7xl mx-auto px-6 py-8">
             <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
               {/* Brand and Copyright */}
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00B89F] to-[#00A88E] flex items-center justify-center">
                   <Zap className="w-4 h-4 text-white" />
                 </div>
                 <div className="text-slate-500 text-sm">
@@ -2152,11 +2443,11 @@ export default function RenewableMarketplace() {
       {/* Purchase Confirmation Modal */}
       {showPurchaseConfirm && pendingPurchase && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm" onClick={cancelPurchase} />
-          <div className="relative bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6">
+          <div className="absolute inset-0 bg-[#06252b]/90 backdrop-blur-sm" onClick={cancelPurchase} />
+          <div className="relative bg-[#0c3941] border border-slate-700 rounded-2xl max-w-md w-full p-6">
             <div className="text-center">
-              <div className="w-16 h-16 rounded-full bg-cyan-500/20 flex items-center justify-center mx-auto mb-4">
-                <FileText className="w-8 h-8 text-cyan-400" />
+              <div className="w-16 h-16 rounded-full bg-[#00B89F]/20 flex items-center justify-center mx-auto mb-4">
+                <FileText className="w-8 h-8 text-[#00B89F]" />
               </div>
               <h3 className="text-xl font-bold text-white mb-2">Confirm Purchase</h3>
               <p className="text-slate-400 mb-2">
@@ -2165,7 +2456,7 @@ export default function RenewableMarketplace() {
               <div className="bg-slate-800/50 rounded-xl p-4 mb-6">
                 <p className="text-white font-semibold">{pendingPurchase.serviceName}</p>
                 <p className="text-slate-400 text-sm">{countryFlags[pendingPurchase.country]} {pendingPurchase.country}</p>
-                <p className="text-cyan-400 font-bold text-lg mt-2">€{pendingPurchase.price.toLocaleString()}</p>
+                <p className="text-[#00B89F] font-bold text-lg mt-2">€{pendingPurchase.price.toLocaleString()}</p>
               </div>
               <div className="flex gap-3">
                 <button
@@ -2176,7 +2467,7 @@ export default function RenewableMarketplace() {
                 </button>
                 <button
                   onClick={confirmPurchase}
-                  className="flex-1 px-4 py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-medium rounded-xl transition-colors"
+                  className="flex-1 px-4 py-3 bg-[#00B89F] hover:bg-[#00B89F] text-[#0c3941] font-medium rounded-xl transition-colors"
                 >
                   Yes
                 </button>
@@ -2189,38 +2480,218 @@ export default function RenewableMarketplace() {
       {/* NBO Modal */}
       {showNBOModal && nboProject && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm" onClick={() => setShowNBOModal(false)} />
-          <div className="relative bg-slate-900 border border-slate-700 rounded-3xl max-w-lg w-full">
-            <div className="p-8">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-white">Submit Non-Binding Offer</h2>
-                <button 
-                  onClick={() => setShowNBOModal(false)}
-                  className="p-2 rounded-full hover:bg-slate-800 transition-colors"
-                >
-                  <X className="w-6 h-6 text-slate-400" />
-                </button>
+          <div className="absolute inset-0 bg-[#06252b]/90 backdrop-blur-sm" onClick={() => setShowNBOModal(false)} />
+          <div className="relative bg-[#0c3941] border border-white/10 rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="sticky top-0 bg-[#0c3941]/95 backdrop-blur border-b border-white/10 px-8 py-5 flex items-center justify-between z-10">
+              <div>
+                <h2 className="text-2xl font-bold text-white font-display">Submit Non-Binding Offer</h2>
+                <p className="text-slate-400 text-sm mt-1">Project: <span className="text-[#00B89F] font-medium">{nboProject.name}</span> · {nboProject.capacity} MWp · {countryFlags[nboProject.country]} {nboProject.country}</p>
               </div>
-              
-              <div className="text-center py-12">
-                <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mx-auto mb-4">
-                  <FileText className="w-8 h-8 text-slate-500" />
+              <button onClick={() => setShowNBOModal(false)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
+                <X className="w-6 h-6 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="p-8 space-y-8">
+              {/* Section 3: Price */}
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-1">3 · Valuation & offer price</h3>
+                <p className="text-slate-400 text-sm mb-4">Cash-free, debt-free basis.</p>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1.5">Offer price *</label>
+                    <div className="flex gap-2">
+                      <input type="number" value={nboForm.priceValue} onChange={(e) => setNbo('priceValue', e.target.value)}
+                        placeholder="e.g. 0.45" className="flex-1 px-4 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00B89F]" />
+                      <select value={nboForm.priceUnit} onChange={(e) => setNbo('priceUnit', e.target.value)}
+                        className="px-3 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white focus:outline-none focus:border-[#00B89F]">
+                        <option value="eur_wp">€/Wp</option>
+                        <option value="eur_mwp">€/MWp</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1.5">Payment form</label>
+                    <select value={nboForm.paymentForm} onChange={(e) => setNbo('paymentForm', e.target.value)}
+                      className="w-full px-4 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white focus:outline-none focus:border-[#00B89F]">
+                      <option value="single">Single payment at closing</option>
+                      <option value="milestones">Milestone payments (DSA)</option>
+                      <option value="equity_shl">Equity + shareholder loan</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1.5">SPA Price (€)</label>
+                    <input type="number" value={nboForm.spaPrice} onChange={(e) => setNbo('spaPrice', e.target.value)}
+                      placeholder="optional" className="w-full px-4 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00B89F]" />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1.5">DSA Price (€)</label>
+                    <input type="number" value={nboForm.dsaPrice} onChange={(e) => setNbo('dsaPrice', e.target.value)}
+                      placeholder="optional" className="w-full px-4 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00B89F]" />
+                  </div>
                 </div>
-                <p className="text-slate-400 text-sm mt-1 mb-2">
-                  Project: <span className="text-cyan-400 font-medium">{nboProject.name}</span>
-                </p>
-                <h3 className="text-lg font-semibold text-white mb-2">Coming Soon</h3>
-                <p className="text-slate-400">
-                  The NBO submission form will be available shortly.
-                </p>
               </div>
 
-              <div className="flex justify-end">
-                <button
-                  onClick={() => setShowNBOModal(false)}
-                  className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-xl transition-colors"
-                >
-                  Close
+              {/* Section 4: Price conditions */}
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-1">4 · Price conditions</h3>
+                <p className="text-slate-400 text-sm mb-4">Tick the price-adjustment mechanisms; the more you activate, the more buyer protection (and the less attractive for the seller).</p>
+                {['Capacity', 'Production', 'Revenue', 'Other'].map(cat => (
+                  <div key={cat} className="mb-4">
+                    <div className="text-xs font-semibold text-[#00B89F] uppercase tracking-wider mb-2">{cat}</div>
+                    <div className="space-y-2">
+                      {priceConditions.filter(p => p.category === cat).map(pc => {
+                        const on = nboForm.priceConditions.includes(pc.id);
+                        return (
+                          <div key={pc.id} onClick={() => toggleNboPriceCond(pc.id)}
+                            className={`p-3 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${on ? 'bg-[#00B89F]/10 border-[#00B89F]/50' : 'bg-[#06252b]/60 border-white/10 hover:border-white/25'}`}>
+                            <div className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center ${on ? 'bg-[#00B89F] border-[#00B89F]' : 'border-slate-500'}`}>
+                              {on && <Check className="w-3 h-3 text-[#0c3941]" />}
+                            </div>
+                            <div>
+                              <div className={`text-sm font-medium ${on ? 'text-[#33C9B5]' : 'text-white'}`}>{pc.name}</div>
+                              <div className="text-xs text-slate-400">{pc.description}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                {/* Quantitative fields tied to price conditions */}
+                <div className="grid md:grid-cols-2 gap-4 mt-4 p-4 bg-[#06252b]/40 rounded-xl border border-white/5">
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1.5">Price reduction for lower capacity (€/Wp per MWp below nominal)</label>
+                    <input type="number" value={nboForm.capacityReduction} onChange={(e) => setNbo('capacityReduction', e.target.value)}
+                      placeholder="e.g. 0.005" className="w-full px-4 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00B89F]" />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1.5">Assumed P50 yield (kWh/kWp) · min PR (%)</label>
+                    <div className="flex gap-2">
+                      <input type="number" value={nboForm.yieldP50} onChange={(e) => setNbo('yieldP50', e.target.value)}
+                        placeholder="yield" className="flex-1 px-3 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00B89F]" />
+                      <input type="number" value={nboForm.minPR} onChange={(e) => setNbo('minPR', e.target.value)}
+                        placeholder="PR %" className="w-20 px-3 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00B89F]" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1.5">Energy price assumed</label>
+                    <div className="flex gap-2">
+                      <input type="number" value={nboForm.energyPrice} onChange={(e) => setNbo('energyPrice', e.target.value)}
+                        placeholder="€/MWh" className="flex-1 px-3 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00B89F]" />
+                      <select value={nboForm.energyType} onChange={(e) => setNbo('energyType', e.target.value)}
+                        className="px-3 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white focus:outline-none focus:border-[#00B89F]">
+                        <option value="ppa">PPA</option>
+                        <option value="merchant">Merchant</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1.5">PPA term (years) · Useful life (years)</label>
+                    <div className="flex gap-2">
+                      <input type="number" value={nboForm.ppaTerm} onChange={(e) => setNbo('ppaTerm', e.target.value)}
+                        placeholder="PPA yrs" className="flex-1 px-3 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00B89F]" />
+                      <input type="number" value={nboForm.usefulLife} onChange={(e) => setNbo('usefulLife', e.target.value)}
+                        placeholder="life" className="w-24 px-3 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00B89F]" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 5: Milestones */}
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-1">5 · Payment milestones</h3>
+                <p className="text-slate-400 text-sm mb-4">Allocate the % of price to each development milestone (should total 100%).</p>
+                <div className="space-y-2">
+                  {nboMilestones.map(ms => (
+                    <div key={ms.id} className="flex items-center gap-3 p-3 bg-[#06252b]/60 rounded-xl border border-white/10">
+                      <div className="flex-1 text-sm text-white">{ms.name}</div>
+                      <div className="flex items-center gap-1">
+                        <input type="number" value={nboForm.milestones[ms.id] || ''} onChange={(e) => setMilestone(ms.id, e.target.value)}
+                          placeholder="0" className="w-20 px-3 py-2 bg-[#0c3941] border border-white/15 rounded-lg text-white text-right placeholder:text-slate-600 focus:outline-none focus:border-[#00B89F]" />
+                        <span className="text-slate-400 text-sm">%</span>
+                      </div>
+                    </div>
+                  ))}
+                  {(() => {
+                    const total = nboMilestones.reduce((s, m) => s + (parseFloat(nboForm.milestones[m.id]) || 0), 0);
+                    return (
+                      <div className={`flex justify-end gap-2 text-sm font-medium ${total === 100 ? 'text-[#00B89F]' : 'text-amber-400'}`}>
+                        Total: {total}% {total === 100 ? '✓' : '(should be 100%)'}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Section 6: Conditions precedent */}
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-1">6 · Conditions precedent</h3>
+                <p className="text-slate-400 text-sm mb-4">Conditions that must be satisfied for closing.</p>
+                {['Development & Permits', 'Corporate & Approval'].map(cat => (
+                  <div key={cat} className="mb-4">
+                    <div className="text-xs font-semibold text-[#00B89F] uppercase tracking-wider mb-2">{cat}</div>
+                    <div className="space-y-2">
+                      {nboClauses.filter(c => c.category === cat).map(clause => {
+                        const on = selectedClauses.includes(clause.id);
+                        return (
+                          <div key={clause.id} onClick={() => handleToggleClause(clause.id)}
+                            className={`p-3 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${on ? 'bg-[#00B89F]/10 border-[#00B89F]/50' : 'bg-[#06252b]/60 border-white/10 hover:border-white/25'}`}>
+                            <div className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center ${on ? 'bg-[#00B89F] border-[#00B89F]' : 'border-slate-500'}`}>
+                              {on && <Check className="w-3 h-3 text-[#0c3941]" />}
+                            </div>
+                            <div>
+                              <div className={`text-sm font-medium ${on ? 'text-[#33C9B5]' : 'text-white'}`}>{clause.name}</div>
+                              <div className="text-xs text-slate-400">{clause.description}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Financing / exclusivity / validity */}
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-4">7 · Process</h3>
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1.5">Financing</label>
+                    <select value={nboForm.financing} onChange={(e) => setNbo('financing', e.target.value)}
+                      className="w-full px-4 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white focus:outline-none focus:border-[#00B89F]">
+                      <option value="equity">100% equity</option>
+                      <option value="shl">Equity + shareholder loan</option>
+                      <option value="debt">Project finance (debt)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1.5">Exclusivity (months)</label>
+                    <input type="number" value={nboForm.exclusivityMonths} onChange={(e) => setNbo('exclusivityMonths', e.target.value)}
+                      placeholder="e.g. 3" className="w-full px-4 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00B89F]" />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1.5">Offer validity (days)</label>
+                    <input type="number" value={nboForm.validityDays} onChange={(e) => setNbo('validityDays', e.target.value)}
+                      placeholder="e.g. 30" className="w-full px-4 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00B89F]" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="sticky bottom-0 bg-[#0c3941]/95 backdrop-blur border-t border-white/10 px-8 py-4 flex items-center justify-between">
+              <div className="text-sm text-slate-400">
+                {nboForm.priceValue ? <span className="text-[#00B89F]">Offer: {nboForm.priceValue} {nboForm.priceUnit === 'eur_wp' ? '€/Wp' : '€/MWp'}</span> : 'Enter an offer price to submit'}
+                {' · '}{selectedClauses.length + nboForm.priceConditions.length} conditions
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setShowNBOModal(false)}
+                  className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-medium rounded-xl transition-colors">Cancel</button>
+                <button onClick={handleSubmitNBO} disabled={!nboForm.priceValue}
+                  className={`px-6 py-2.5 font-semibold rounded-xl transition-colors flex items-center gap-2 ${nboForm.priceValue ? 'bg-[#00B89F] hover:bg-[#00cdb1] text-[#06252b]' : 'bg-white/10 text-slate-500 cursor-not-allowed'}`}>
+                  <Send className="w-4 h-4" /> Submit NBO
                 </button>
               </div>
             </div>
@@ -2232,13 +2703,13 @@ export default function RenewableMarketplace() {
       {showLoginModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setShowLoginModal(false)} />
-          <div className="relative z-10 bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full overflow-hidden shadow-2xl">
+          <div className="relative z-10 bg-[#0c3941] border border-slate-700 rounded-3xl max-w-md w-full overflow-hidden shadow-2xl">
             <div className="p-8">
               <div className="text-center mb-8">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center mx-auto mb-4">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#00B89F] to-[#00A88E] flex items-center justify-center mx-auto mb-4">
                   <Zap className="w-8 h-8 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold text-white mb-2">Welcome to RENEWEX</h2>
+                <h2 className="text-2xl font-bold text-white mb-2 font-display">Welcome to RENEW<span className="text-[#00B89F]">EX</span></h2>
                 <p className="text-slate-400">Log in to access project details and documentation</p>
               </div>
 
@@ -2248,7 +2719,10 @@ export default function RenewableMarketplace() {
                   <input 
                     type="email" 
                     placeholder="user@training.com"
-                    className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                    value={loginForm.email}
+                    onChange={(e) => { setLoginForm(prev => ({ ...prev, email: e.target.value })); if (authError) setAuthError(''); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }}
+                    className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-[#00B89F] transition-colors"
                   />
                 </div>
                 <div>
@@ -2256,24 +2730,37 @@ export default function RenewableMarketplace() {
                   <input 
                     type="password" 
                     placeholder="••••••••"
-                    className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                    value={loginForm.password}
+                    onChange={(e) => { setLoginForm(prev => ({ ...prev, password: e.target.value })); if (authError) setAuthError(''); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }}
+                    className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-[#00B89F] transition-colors"
                   />
                 </div>
 
+                {authError && (
+                  <div className="px-4 py-3 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-300">
+                    {authError}
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between">
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-cyan-500 focus:ring-cyan-500" />
+                    <input type="checkbox" className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-[#00B89F] focus:ring-[#00B89F]" />
                     <span className="text-sm text-slate-400">Remember me</span>
                   </label>
-                  <a href="#" className="text-sm text-cyan-400 hover:text-cyan-300">Forgot password?</a>
+                  <a href="#" className="text-sm text-[#00B89F] hover:text-[#33C9B5]">Forgot password?</a>
                 </div>
 
                 <button 
                   onClick={handleLogin}
-                  className="w-full py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold rounded-xl transition-colors"
+                  disabled={authLoading}
+                  className="w-full py-3 bg-[#00B89F] hover:bg-[#00cdb1] text-[#0c3941] font-semibold rounded-xl transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Log In
+                  {authLoading ? 'Signing in…' : 'Log In'}
                 </button>
+                {!isSupabaseConfigured && (
+                  <p className="text-xs text-amber-400/80 text-center">Demo mode — connect Supabase (.env) for real accounts.</p>
+                )}
               </div>
 
               <div className="mt-6 pt-6 border-t border-slate-800 text-center">
@@ -2281,7 +2768,7 @@ export default function RenewableMarketplace() {
                   Don't have an account?{' '}
                   <button 
                     onClick={() => { setShowLoginModal(false); setShowRegisterModal(true); }}
-                    className="text-cyan-400 hover:text-cyan-300"
+                    className="text-[#00B89F] hover:text-[#33C9B5]"
                   >
                     Create account
                   </button>
@@ -2312,11 +2799,11 @@ export default function RenewableMarketplace() {
             {/* Header */}
             <div className="sticky top-0 bg-white border-b border-slate-200 px-8 py-6 z-10">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-700 to-[#0c3941] flex items-center justify-center">
                   <Zap className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-slate-900">Create Account</h2>
+                  <h2 className="text-xl font-bold text-[#0c3941]">Create Account</h2>
                   <p className="text-sm text-slate-500">RENEWEX Training Platform</p>
                 </div>
               </div>
@@ -2347,7 +2834,7 @@ export default function RenewableMarketplace() {
                       type="text"
                       value={registerForm.firstName}
                       onChange={(e) => handleRegisterChange('firstName', e.target.value)}
-                      className={`w-full px-4 py-2.5 bg-white border rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all ${
+                      className={`w-full px-4 py-2.5 bg-white border rounded-lg text-[#0c3941] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0c3941] focus:border-transparent transition-all ${
                         registerErrors.firstName ? 'border-red-500' : 'border-slate-300'
                       }`}
                       placeholder="John"
@@ -2365,7 +2852,7 @@ export default function RenewableMarketplace() {
                       type="text"
                       value={registerForm.lastName}
                       onChange={(e) => handleRegisterChange('lastName', e.target.value)}
-                      className={`w-full px-4 py-2.5 bg-white border rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all ${
+                      className={`w-full px-4 py-2.5 bg-white border rounded-lg text-[#0c3941] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0c3941] focus:border-transparent transition-all ${
                         registerErrors.lastName ? 'border-red-500' : 'border-slate-300'
                       }`}
                       placeholder="Smith"
@@ -2386,7 +2873,7 @@ export default function RenewableMarketplace() {
                     type="email"
                     value={registerForm.email}
                     onChange={(e) => handleRegisterChange('email', e.target.value)}
-                    className={`w-full px-4 py-2.5 bg-white border rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all ${
+                    className={`w-full px-4 py-2.5 bg-white border rounded-lg text-[#0c3941] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0c3941] focus:border-transparent transition-all ${
                       registerErrors.email ? 'border-red-500' : 'border-slate-300'
                     }`}
                     placeholder="john.smith@university.edu"
@@ -2407,7 +2894,7 @@ export default function RenewableMarketplace() {
                       type={showPassword ? 'text' : 'password'}
                       value={registerForm.password}
                       onChange={(e) => handleRegisterChange('password', e.target.value)}
-                      className={`w-full px-4 py-2.5 pr-12 bg-white border rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all ${
+                      className={`w-full px-4 py-2.5 pr-12 bg-white border rounded-lg text-[#0c3941] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0c3941] focus:border-transparent transition-all ${
                         registerErrors.password ? 'border-red-500' : 'border-slate-300'
                       }`}
                       placeholder="Minimum 8 characters"
@@ -2444,15 +2931,15 @@ export default function RenewableMarketplace() {
                     id="role"
                     value={registerForm.role}
                     onChange={(e) => handleRegisterChange('role', e.target.value)}
-                    className={`w-full px-4 py-2.5 bg-white border rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all appearance-none cursor-pointer ${
+                    className={`w-full px-4 py-2.5 bg-white border rounded-lg text-[#0c3941] focus:outline-none focus:ring-2 focus:ring-[#0c3941] focus:border-transparent transition-all appearance-none cursor-pointer ${
                       registerErrors.role ? 'border-red-500' : 'border-slate-300'
                     } ${!registerForm.role ? 'text-slate-400' : ''}`}
                     style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '20px' }}
                   >
                     <option value="">Select your role</option>
-                    <option value="student">Student</option>
-                    <option value="instructor">Instructor</option>
-                    <option value="observer">Observer</option>
+                    <option value="alumno">Alumno</option>
+                    <option value="moderador">Moderador</option>
+                    <option value="profesor">Profesor</option>
                   </select>
                   {registerErrors.role && (
                     <p className="mt-1.5 text-sm text-red-500">{registerErrors.role}</p>
@@ -2469,7 +2956,7 @@ export default function RenewableMarketplace() {
                     type="text"
                     value={registerForm.institution}
                     onChange={(e) => handleRegisterChange('institution', e.target.value)}
-                    className={`w-full px-4 py-2.5 bg-white border rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all ${
+                    className={`w-full px-4 py-2.5 bg-white border rounded-lg text-[#0c3941] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0c3941] focus:border-transparent transition-all ${
                       registerErrors.institution ? 'border-red-500' : 'border-slate-300'
                     }`}
                     placeholder="University of Example"
@@ -2477,41 +2964,6 @@ export default function RenewableMarketplace() {
                   {registerErrors.institution && (
                     <p className="mt-1.5 text-sm text-red-500">{registerErrors.institution}</p>
                   )}
-                </div>
-
-                {/* Course (Optional) */}
-                <div>
-                  <label htmlFor="course" className="block text-sm font-medium text-slate-700 mb-1.5">
-                    Course <span className="text-slate-400 font-normal">(optional)</span>
-                  </label>
-                  <select
-                    id="course"
-                    value={registerForm.courseCode}
-                    onChange={(e) => handleRegisterChange('courseCode', e.target.value)}
-                    className={`w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all appearance-none cursor-pointer ${!registerForm.courseCode ? 'text-slate-400' : ''}`}
-                    style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '20px' }}
-                  >
-                    <option value="">Select your course</option>
-                    <option value="ieb_miaf">IEB - MIAF</option>
-                    <option value="exus">Exus In-Company Course</option>
-                    <option value="exolum">Exolum In-Company Course</option>
-                    <option value="repsol">Repsol In-Company Course</option>
-                  </select>
-                </div>
-
-                {/* Team Name (Optional) */}
-                <div>
-                  <label htmlFor="teamName" className="block text-sm font-medium text-slate-700 mb-1.5">
-                    Team name <span className="text-slate-400 font-normal">(optional)</span>
-                  </label>
-                  <input
-                    id="teamName"
-                    type="text"
-                    value={registerForm.teamName}
-                    onChange={(e) => handleRegisterChange('teamName', e.target.value)}
-                    className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all"
-                    placeholder="Team Alpha"
-                  />
                 </div>
 
                 {/* Consent Checkboxes */}
@@ -2524,14 +2976,14 @@ export default function RenewableMarketplace() {
                         type="checkbox"
                         checked={registerForm.acceptPrivacy}
                         onChange={(e) => handleRegisterChange('acceptPrivacy', e.target.checked)}
-                        className="mt-0.5 w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                        className="mt-0.5 w-4 h-4 rounded border-slate-300 text-[#0c3941] focus:ring-[#0c3941] cursor-pointer"
                       />
-                      <span className="text-sm text-slate-600 group-hover:text-slate-900 transition-colors">
+                      <span className="text-sm text-slate-600 group-hover:text-[#0c3941] transition-colors">
                         I accept the{' '}
                         <button 
                           type="button"
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowPrivacyModal(true); }}
-                          className="text-slate-900 underline hover:no-underline"
+                          className="text-[#0c3941] underline hover:no-underline"
                         >
                           Privacy Policy
                         </button>
@@ -2547,14 +2999,14 @@ export default function RenewableMarketplace() {
                         type="checkbox"
                         checked={registerForm.acceptDisclaimer}
                         onChange={(e) => handleRegisterChange('acceptDisclaimer', e.target.checked)}
-                        className="mt-0.5 w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                        className="mt-0.5 w-4 h-4 rounded border-slate-300 text-[#0c3941] focus:ring-[#0c3941] cursor-pointer"
                       />
-                      <span className="text-sm text-slate-600 group-hover:text-slate-900 transition-colors">
+                      <span className="text-sm text-slate-600 group-hover:text-[#0c3941] transition-colors">
                         I accept the{' '}
                         <button 
                           type="button"
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowDisclaimerModal(true); }}
-                          className="text-slate-900 underline hover:no-underline"
+                          className="text-[#0c3941] underline hover:no-underline"
                         >
                           Disclaimer
                         </button>
@@ -2570,14 +3022,14 @@ export default function RenewableMarketplace() {
                         type="checkbox"
                         checked={registerForm.acceptTerms}
                         onChange={(e) => handleRegisterChange('acceptTerms', e.target.checked)}
-                        className="mt-0.5 w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                        className="mt-0.5 w-4 h-4 rounded border-slate-300 text-[#0c3941] focus:ring-[#0c3941] cursor-pointer"
                       />
-                      <span className="text-sm text-slate-600 group-hover:text-slate-900 transition-colors">
+                      <span className="text-sm text-slate-600 group-hover:text-[#0c3941] transition-colors">
                         I accept the{' '}
                         <button 
                           type="button"
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowTermsModal(true); }}
-                          className="text-slate-900 underline hover:no-underline"
+                          className="text-[#0c3941] underline hover:no-underline"
                         >
                           Terms & Conditions
                         </button>
@@ -2592,11 +3044,17 @@ export default function RenewableMarketplace() {
 
                 {/* Submit Button */}
                 <div className="pt-4">
+                  {authError && (
+                    <div className="mb-3 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+                      {authError}
+                    </div>
+                  )}
                   <button
                     type="submit"
-                    className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2"
+                    disabled={authLoading}
+                    className="w-full py-3 bg-[#0c3941] hover:bg-slate-800 text-white font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-[#0c3941] focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    Create account
+                    {authLoading ? 'Creating account…' : 'Create account'}
                   </button>
                 </div>
 
@@ -2619,7 +3077,7 @@ export default function RenewableMarketplace() {
                     setShowDisclaimerModal(false);
                     setShowLoginModal(true); 
                   }}
-                  className="text-slate-900 font-medium hover:underline"
+                  className="text-[#0c3941] font-medium hover:underline"
                 >
                   Log in
                 </button>
@@ -2658,7 +3116,7 @@ export default function RenewableMarketplace() {
             {/* Fixed Header */}
             <div className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-4 rounded-t-xl">
               <div className="flex items-center justify-between">
-                <h2 id="privacy-policy-title" className="text-lg font-bold text-slate-900">Privacy Policy</h2>
+                <h2 id="privacy-policy-title" className="text-lg font-bold text-[#0c3941]">Privacy Policy</h2>
                 <button 
                   onClick={() => setShowPrivacyModal(false)}
                   className="p-2 rounded-lg hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400"
@@ -2708,10 +3166,10 @@ export default function RenewableMarketplace() {
                 <p>
                   <strong>Contact details for exercising rights:</strong><br />
                   Postal address: VAS CONSULTORIA, Javier González Fornos, Calle Antonio Casero 24, Esc 1, 1ª, 28007 Madrid (Madrid).<br />
-                  Email: <a href="mailto:javier.gonzalez@vas-consultoria.com" className="text-slate-900 underline hover:no-underline">javier.gonzalez@vas-consultoria.com</a>
+                  Email: <a href="mailto:javier.gonzalez@vas-consultoria.com" className="text-[#0c3941] underline hover:no-underline">javier.gonzalez@vas-consultoria.com</a>
                 </p>
 
-                <p className="font-semibold text-slate-900 pt-2">
+                <p className="font-semibold text-[#0c3941] pt-2">
                   MANDATORY OR OPTIONAL NATURE OF THE INFORMATION PROVIDED BY THE USER
                 </p>
 
@@ -2719,7 +3177,7 @@ export default function RenewableMarketplace() {
                   By ticking the corresponding boxes and entering data in the fields marked with an asterisk (*) in the contact form or presented in download forms, Users expressly, freely, and unequivocally agree that their data are necessary to process their request by the service provider, while the inclusion of data in the remaining fields is voluntary. The User guarantees that the personal data provided to the CONTROLLER are accurate and undertakes to notify any changes thereto. The CONTROLLER expressly informs and guarantees Users that their personal data will not be transferred to third parties under any circumstances, and that should any transfer of personal data be contemplated, the prior, express, informed, and unequivocal consent of the Users will be requested. All data requested through the website are mandatory, as they are necessary to provide an optimal service to the User. If all required data are not provided, it cannot be guaranteed that the information and services offered will fully meet the User's needs.
                 </p>
 
-                <p className="font-semibold text-slate-900 pt-2">
+                <p className="font-semibold text-[#0c3941] pt-2">
                   SECURITY MEASURES
                 </p>
 
@@ -2733,7 +3191,7 @@ export default function RenewableMarketplace() {
             <div className="flex-shrink-0 bg-slate-50 border-t border-slate-200 px-6 py-4 rounded-b-xl">
               <button 
                 onClick={() => setShowPrivacyModal(false)}
-                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2"
+                className="w-full py-2.5 bg-[#0c3941] hover:bg-slate-800 text-white font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-[#0c3941] focus:ring-offset-2"
               >
                 Close
               </button>
@@ -2771,7 +3229,7 @@ export default function RenewableMarketplace() {
             {/* Fixed Header */}
             <div className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-4 rounded-t-xl">
               <div className="flex items-center justify-between">
-                <h2 id="terms-conditions-title" className="text-lg font-bold text-slate-900">Terms and Conditions</h2>
+                <h2 id="terms-conditions-title" className="text-lg font-bold text-[#0c3941]">Terms and Conditions</h2>
                 <button 
                   onClick={() => setShowTermsModal(false)}
                   className="p-2 rounded-lg hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400"
@@ -2799,7 +3257,7 @@ export default function RenewableMarketplace() {
             <div className="flex-shrink-0 bg-slate-50 border-t border-slate-200 px-6 py-4 rounded-b-xl">
               <button 
                 onClick={() => setShowTermsModal(false)}
-                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2"
+                className="w-full py-2.5 bg-[#0c3941] hover:bg-slate-800 text-white font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-[#0c3941] focus:ring-offset-2"
               >
                 Close
               </button>
@@ -2837,7 +3295,7 @@ export default function RenewableMarketplace() {
             {/* Fixed Header */}
             <div className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-4 rounded-t-xl">
               <div className="flex items-center justify-between">
-                <h2 id="disclaimer-title" className="text-lg font-bold text-slate-900">Disclaimer</h2>
+                <h2 id="disclaimer-title" className="text-lg font-bold text-[#0c3941]">Disclaimer</h2>
                 <button 
                   onClick={() => setShowDisclaimerModal(false)}
                   className="p-2 rounded-lg hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400"
@@ -2851,7 +3309,7 @@ export default function RenewableMarketplace() {
             {/* Scrollable Content Area */}
             <div className="flex-1 overflow-y-auto px-6 py-5">
               <div className="text-sm text-slate-700 leading-relaxed space-y-4">
-                <p className="font-semibold text-slate-900">
+                <p className="font-semibold text-[#0c3941]">
                   INFORMATION SOCIETY SERVICES LAW (LSSI)
                 </p>
 
@@ -2867,7 +3325,7 @@ export default function RenewableMarketplace() {
                   VAS CONSULTORIA reserves the right to modify any type of information that may appear on the website, without any obligation to give prior notice or inform users of such changes, with publication on the VAS CONSULTORIA website being deemed sufficient.
                 </p>
 
-                <p className="font-semibold text-slate-900 pt-2">
+                <p className="font-semibold text-[#0c3941] pt-2">
                   IDENTIFICATION DETAILS
                 </p>
 
@@ -2878,10 +3336,10 @@ export default function RenewableMarketplace() {
                   <li><strong>Tax ID (NIF):</strong> 53540925-F</li>
                   <li><strong>Registered office:</strong> Calle Antonio Casero 24, Esc 1, 1A, 28007 Madrid (Madrid)</li>
                   <li><strong>Telephone:</strong> +34 649 239 040</li>
-                  <li><strong>Email:</strong> <a href="mailto:info@vas-consultoria.com" className="text-slate-900 underline hover:no-underline">info@vas-consultoria.com</a></li>
+                  <li><strong>Email:</strong> <a href="mailto:info@vas-consultoria.com" className="text-[#0c3941] underline hover:no-underline">info@vas-consultoria.com</a></li>
                 </ul>
 
-                <p className="font-semibold text-slate-900 pt-2">
+                <p className="font-semibold text-[#0c3941] pt-2">
                   INTELLECTUAL AND INDUSTRIAL PROPERTY RIGHTS
                 </p>
 
@@ -2902,10 +3360,10 @@ export default function RenewableMarketplace() {
                 </p>
 
                 <p>
-                  Any observations regarding possible infringements of intellectual or industrial property rights, or regarding any content on the website, may be submitted via email to <a href="mailto:info@vas-consultoria.com" className="text-slate-900 underline hover:no-underline">info@vas-consultoria.com</a>.
+                  Any observations regarding possible infringements of intellectual or industrial property rights, or regarding any content on the website, may be submitted via email to <a href="mailto:info@vas-consultoria.com" className="text-[#0c3941] underline hover:no-underline">info@vas-consultoria.com</a>.
                 </p>
 
-                <p className="font-semibold text-slate-900 pt-2">
+                <p className="font-semibold text-[#0c3941] pt-2">
                   DISCLAIMER OF LIABILITY
                 </p>
 
@@ -2913,7 +3371,7 @@ export default function RenewableMarketplace() {
                   The CONTROLLER disclaims any liability arising from information published on the website when such information has been manipulated or introduced by a third party unrelated to the CONTROLLER.
                 </p>
 
-                <p className="font-semibold text-slate-900 pt-2">
+                <p className="font-semibold text-[#0c3941] pt-2">
                   Use of Cookies
                 </p>
 
@@ -2929,7 +3387,7 @@ export default function RenewableMarketplace() {
                   Users may configure their browser to be notified of the receipt of cookies and to prevent their installation on their device. Please consult your browser's instructions for further information.
                 </p>
 
-                <p className="font-semibold text-slate-900 pt-2">
+                <p className="font-semibold text-[#0c3941] pt-2">
                   Links Policy
                 </p>
 
@@ -2945,7 +3403,7 @@ export default function RenewableMarketplace() {
                   This website has been reviewed and tested to ensure proper functioning. In principle, correct operation can be guaranteed 365 days a year, 24 hours a day. However, the CONTROLLER does not rule out the possibility of programming errors or the occurrence of force majeure events, natural disasters, strikes, or similar circumstances that may make access to the website impossible.
                 </p>
 
-                <p className="font-semibold text-slate-900 pt-2">
+                <p className="font-semibold text-[#0c3941] pt-2">
                   IP ADDRESSES
                 </p>
 
@@ -2953,7 +3411,7 @@ export default function RenewableMarketplace() {
                   The website servers may automatically detect the IP address and domain name used by the user. An IP address is a number automatically assigned to a computer when it connects to the Internet. All such information is recorded in a duly registered server activity log file, which allows for the subsequent processing of data solely for statistical purposes, such as determining the number of page impressions, number of visits to web servers, order of visits, access points, and similar metrics.
                 </p>
 
-                <p className="font-semibold text-slate-900 pt-2">
+                <p className="font-semibold text-[#0c3941] pt-2">
                   APPLICABLE LAW AND JURISDICTION
                 </p>
 
@@ -2967,7 +3425,7 @@ export default function RenewableMarketplace() {
             <div className="flex-shrink-0 bg-slate-50 border-t border-slate-200 px-6 py-4 rounded-b-xl">
               <button 
                 onClick={() => setShowDisclaimerModal(false)}
-                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2"
+                className="w-full py-2.5 bg-[#0c3941] hover:bg-slate-800 text-white font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-[#0c3941] focus:ring-offset-2"
               >
                 Close
               </button>
