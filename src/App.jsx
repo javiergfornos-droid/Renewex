@@ -5,6 +5,7 @@ import {
   insertNBO, getMyNBOs, insertPurchase, getMyPurchases
 } from './supabaseClient';
 import { Search, MapPin, Zap, Wind, Sun, TrendingUp, Calendar, Building2, ChevronDown, X, Filter, ArrowUpRight, FileText, Send, User, LogOut, Settings, BarChart3, Activity, Shield, DollarSign, Check } from 'lucide-react';
+import emailjs from '@emailjs/browser';
 
 const developmentStages = [
   "Land Secured",
@@ -252,6 +253,25 @@ function formatCurrency(amount) {
   return `$${(amount / 1000000).toFixed(0)}M`;
 }
 
+// Teasers PDF subidos a /public/teasers/ (accesibles en /teasers/...).
+// La clave es el id del proyecto. Añade aquí los que falten al subirlos.
+const teaserFiles = {
+  1: '/teasers/Andalucia_Solar_Teaser_01.pdf',
+  2: '/teasers/Puglia_Agrisolare_Teaser_02.pdf',
+  3: '/teasers/Alentejo_Solar_Teaser_03.pdf',
+  4: '/teasers/Sicilia_Teaser_04.pdf',
+  5: '/teasers/Loire_Valley_Teaser_05.pdf',
+  // 6:  '/teasers/Extremadura_Solar_Teaser_06.pdf',
+  // 7:  '/teasers/Sardegna_Wind_Teaser_07.pdf',
+  // 8:  '/teasers/Brandenburg_Solar_Teaser_08.pdf',
+  // 9:  '/teasers/Castilla_Solar_Teaser_09.pdf',
+  // 10: '/teasers/Algarve_Solar_Teaser_10.pdf',
+  // 11: '/teasers/Provence_Wind_Teaser_11.pdf',
+  // 12: '/teasers/Saxony_Solar_Teaser_12.pdf',
+  // 13: '/teasers/Occitanie_Solar_Teaser_13.pdf',
+  // 14: '/teasers/Lower_Saxony_Wind_Teaser_14.pdf',
+};
+
 function ProjectCard({ project, onClick, hasNBO, isLoggedIn }) {
   const Icon = typeIcons[project.type];
   const colors = typeColors[project.type];
@@ -402,10 +422,12 @@ function ProjectModal({ project, onClose, onSubmitNBO, hasNBO }) {
   };
 
   const handleDownloadTeaser = () => {
-    // PDF teasers should be placed in /teasers/ folder with naming convention: project-id.pdf
-    const teaserUrl = `/teasers/${project.id}.pdf`;
+    const teaserUrl = teaserFiles[project.id];
+    if (!teaserUrl) return;
     const link = document.createElement('a');
     link.href = teaserUrl;
+    link.target = '_blank';
+    link.rel = 'noopener';
     link.download = `${project.name.replace(/\s+/g, '-')}-Teaser.pdf`;
     document.body.appendChild(link);
     link.click();
@@ -530,6 +552,7 @@ function ProjectModal({ project, onClose, onSubmitNBO, hasNBO }) {
                 </div>
               </div>
               <div className="flex gap-3">
+                {teaserFiles[project.id] && (
                 <button 
                   onClick={handleDownloadTeaser}
                   className="px-5 py-3 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-xl transition-colors flex items-center gap-2"
@@ -541,6 +564,7 @@ function ProjectModal({ project, onClose, onSubmitNBO, hasNBO }) {
                   </svg>
                   Download Teaser
                 </button>
+                )}
                 {hasNBO ? (
                   <button 
                     className="px-5 py-3 bg-green-500/20 text-green-400 font-semibold rounded-xl flex items-center gap-2 cursor-default"
@@ -1196,6 +1220,58 @@ export default function RenewableMarketplace() {
             validity_days: nboForm.validityDays ? parseInt(nboForm.validityDays, 10) : null,
           });
         } catch (err) { console.warn('No se pudo guardar la NBO en Supabase:', err?.message); }
+      }
+      // --- Notificación por email al moderador (EmailJS) ---
+      const EMAILJS_READY = Boolean(
+        import.meta.env?.VITE_EMAILJS_SERVICE_ID &&
+        import.meta.env?.VITE_EMAILJS_TEMPLATE_ID &&
+        import.meta.env?.VITE_EMAILJS_PUBLIC_KEY
+      );
+      if (EMAILJS_READY) {
+        try {
+          const unit = nboForm.priceUnit === 'eur_wp' ? '€/Wp' : '€/MWp';
+          const payMap = { single: 'Pago único al cierre', milestones: 'Pagos por hitos (DSA)', equity_shl: 'Equity + préstamo participativo' };
+          const pcNames = nboForm.priceConditions.map(id => (priceConditions.find(x => x.id === id) || {}).name).filter(Boolean);
+          const cpNames = selectedClauses.map(id => (nboClauses.find(x => x.id === id) || {}).name).filter(Boolean);
+          const msNames = Object.entries(nboForm.milestones || {}).filter(([, v]) => v !== '' && v != null)
+            .map(([id, v]) => `${(milestones.find(x => x.id === id) || {}).name || id}: ${v}`);
+          const lines = [];
+          lines.push(`Precio ofertado: ${nboForm.priceValue} ${unit}`);
+          lines.push(`Forma de pago: ${payMap[nboForm.paymentForm] || nboForm.paymentForm}`);
+          if (nboForm.spaPrice) lines.push(`Precio SPA: €${nboForm.spaPrice}`);
+          if (nboForm.dsaPrice) lines.push(`Precio DSA: €${nboForm.dsaPrice}`);
+          if (nboForm.capacityReduction) lines.push(`Ajuste por capacidad: ${nboForm.capacityReduction}%`);
+          if (nboForm.yieldP50) lines.push(`Yield P50 asumido: ${nboForm.yieldP50}`);
+          if (nboForm.minPR) lines.push(`PR mínimo: ${nboForm.minPR}`);
+          if (nboForm.energyPrice) lines.push(`Precio energía (${nboForm.energyType || ''}): ${nboForm.energyPrice}`);
+          if (nboForm.ppaTerm) lines.push(`Plazo PPA: ${nboForm.ppaTerm} años`);
+          if (nboForm.usefulLife) lines.push(`Vida útil: ${nboForm.usefulLife} años`);
+          if (nboForm.leaseCost) lines.push(`Coste arrendamiento: ${nboForm.leaseCost}`);
+          if (nboForm.exclusivityMonths) lines.push(`Exclusividad: ${nboForm.exclusivityMonths} meses`);
+          if (nboForm.validityDays) lines.push(`Validez de la oferta: ${nboForm.validityDays} días`);
+          if (pcNames.length) lines.push(`\nCondiciones de precio:\n- ${pcNames.join('\n- ')}`);
+          if (msNames.length) lines.push(`\nHitos de pago:\n- ${msNames.join('\n- ')}`);
+          if (cpNames.length) lines.push(`\nCondiciones suspensivas (CPs):\n- ${cpNames.join('\n- ')}`);
+          const params = {
+            to_email: import.meta.env?.VITE_OFFERS_EMAIL || '',
+            reply_to: user.email,
+            student_name: user.name,
+            student_email: user.email,
+            project_name: nboProject.name,
+            project_capacity: `${nboProject.capacity} MWp`,
+            project_country: nboProject.country,
+            price: `${nboForm.priceValue} ${unit}`,
+            payment_form: payMap[nboForm.paymentForm] || nboForm.paymentForm,
+            offer_summary: lines.join('\n'),
+            submitted_at: new Date().toLocaleString('es-ES'),
+          };
+          await emailjs.send(
+            import.meta.env.VITE_EMAILJS_SERVICE_ID,
+            import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
+            params,
+            { publicKey: import.meta.env.VITE_EMAILJS_PUBLIC_KEY }
+          );
+        } catch (err) { console.warn('No se pudo enviar el email de la NBO:', err?.message); }
       }
       setShowNBOModal(false);
       setSelectedProject(null);
@@ -2496,16 +2572,16 @@ export default function RenewableMarketplace() {
             <div className="p-8 space-y-8">
               {/* Section 3: Price */}
               <div>
-                <h3 className="text-lg font-semibold text-white mb-1">3 · Valuation & offer price</h3>
+                <h3 className="text-lg font-semibold text-white mb-1">1 · Valuation &amp; offer price</h3>
                 <p className="text-slate-400 text-sm mb-4">Cash-free, debt-free basis.</p>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm text-slate-400 mb-1.5">Offer price *</label>
                     <div className="flex gap-2">
                       <input type="number" value={nboForm.priceValue} onChange={(e) => setNbo('priceValue', e.target.value)}
-                        placeholder="e.g. 0.45" className="flex-1 px-4 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00B89F]" />
+                        placeholder="e.g. 0.45" className="flex-1 min-w-0 px-4 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00B89F]" />
                       <select value={nboForm.priceUnit} onChange={(e) => setNbo('priceUnit', e.target.value)}
-                        className="px-3 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white focus:outline-none focus:border-[#00B89F]">
+                        className="shrink-0 w-24 px-3 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white focus:outline-none focus:border-[#00B89F]">
                         <option value="eur_wp">€/Wp</option>
                         <option value="eur_mwp">€/MWp</option>
                       </select>
@@ -2535,7 +2611,7 @@ export default function RenewableMarketplace() {
 
               {/* Section 4: Price conditions */}
               <div>
-                <h3 className="text-lg font-semibold text-white mb-1">4 · Price conditions</h3>
+                <h3 className="text-lg font-semibold text-white mb-1">2 · Price conditions</h3>
                 <p className="text-slate-400 text-sm mb-4">Tick the price-adjustment mechanisms; the more you activate, the more buyer protection (and the less attractive for the seller).</p>
                 {['Capacity', 'Production', 'Revenue', 'Other'].map(cat => (
                   <div key={cat} className="mb-4">
@@ -2601,7 +2677,7 @@ export default function RenewableMarketplace() {
 
               {/* Section 5: Milestones */}
               <div>
-                <h3 className="text-lg font-semibold text-white mb-1">5 · Payment milestones</h3>
+                <h3 className="text-lg font-semibold text-white mb-1">3 · Payment milestones</h3>
                 <p className="text-slate-400 text-sm mb-4">Allocate the % of price to each development milestone (should total 100%).</p>
                 <div className="space-y-2">
                   {nboMilestones.map(ms => (
@@ -2627,7 +2703,7 @@ export default function RenewableMarketplace() {
 
               {/* Section 6: Conditions precedent */}
               <div>
-                <h3 className="text-lg font-semibold text-white mb-1">6 · Conditions precedent</h3>
+                <h3 className="text-lg font-semibold text-white mb-1">4 · Conditions precedent</h3>
                 <p className="text-slate-400 text-sm mb-4">Conditions that must be satisfied for closing.</p>
                 {['Development & Permits', 'Corporate & Approval'].map(cat => (
                   <div key={cat} className="mb-4">
@@ -2655,7 +2731,7 @@ export default function RenewableMarketplace() {
 
               {/* Financing / exclusivity / validity */}
               <div>
-                <h3 className="text-lg font-semibold text-white mb-4">7 · Process</h3>
+                <h3 className="text-lg font-semibold text-white mb-4">5 · Process</h3>
                 <div className="grid md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm text-slate-400 mb-1.5">Financing</label>
