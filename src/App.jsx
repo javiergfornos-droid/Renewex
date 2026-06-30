@@ -57,19 +57,6 @@ const projects = [
     developmentStage: "Construction Permit Secured"
   },
   {
-    id: 4,
-    name: "Sicilia Vento",
-    type: "Wind",
-    capacity: 280,
-    location: "Trapani, Italy",
-    country: "Italy",
-    epcCost: 195000000,
-    distanceToSubstation: 5.3,
-    landSurface: 1400,
-    landLeaseCost: 700,
-    developmentStage: "Under Construction"
-  },
-  {
     id: 5,
     name: "Loire Valley Solar",
     type: "Solar",
@@ -96,19 +83,6 @@ const projects = [
     developmentStage: "Environmental Permit"
   },
   {
-    id: 7,
-    name: "Sardegna Wind Farm",
-    type: "Wind",
-    capacity: 240,
-    location: "Sassari, Italy",
-    country: "Italy",
-    epcCost: 168000000,
-    distanceToSubstation: 4.2,
-    landSurface: 1200,
-    landLeaseCost: 650,
-    developmentStage: "Connection Secured"
-  },
-  {
     id: 8,
     name: "Brandenburg Solar",
     type: "Solar",
@@ -119,84 +93,6 @@ const projects = [
     distanceToSubstation: 2.1,
     landSurface: 580,
     landLeaseCost: 2200,
-    developmentStage: "PPA Secured"
-  },
-  {
-    id: 9,
-    name: "Castilla Solar Farm",
-    type: "Solar",
-    capacity: 480,
-    location: "Toledo, Spain",
-    country: "Spain",
-    epcCost: 305000000,
-    distanceToSubstation: 4.5,
-    landSurface: 960,
-    landLeaseCost: 1150,
-    developmentStage: "Under Construction"
-  },
-  {
-    id: 10,
-    name: "Algarve Solar Park",
-    type: "Solar",
-    capacity: 310,
-    location: "Faro, Portugal",
-    country: "Portugal",
-    epcCost: 198000000,
-    distanceToSubstation: 3.8,
-    landSurface: 620,
-    landLeaseCost: 1050,
-    developmentStage: "PPA Secured"
-  },
-  {
-    id: 11,
-    name: "Provence Wind Farm",
-    type: "Wind",
-    capacity: 180,
-    location: "Avignon, France",
-    country: "France",
-    epcCost: 135000000,
-    distanceToSubstation: 5.9,
-    landSurface: 900,
-    landLeaseCost: 1650,
-    developmentStage: "Construction Permit Secured"
-  },
-  {
-    id: 12,
-    name: "Saxony Solar Park",
-    type: "Solar",
-    capacity: 350,
-    location: "Leipzig, Germany",
-    country: "Germany",
-    epcCost: 225000000,
-    distanceToSubstation: 1.8,
-    landSurface: 700,
-    landLeaseCost: 2400,
-    developmentStage: "Land Secured"
-  },
-  {
-    id: 13,
-    name: "Occitanie Solar Complex",
-    type: "Solar",
-    capacity: 410,
-    location: "Montpellier, France",
-    country: "France",
-    epcCost: 262000000,
-    distanceToSubstation: 5.2,
-    landSurface: 820,
-    landLeaseCost: 1750,
-    developmentStage: "Environmental Permit"
-  },
-  {
-    id: 14,
-    name: "Lower Saxony Wind Park",
-    type: "Wind",
-    capacity: 320,
-    location: "Hanover, Germany",
-    country: "Germany",
-    epcCost: 240000000,
-    distanceToSubstation: 3.4,
-    landSurface: 1600,
-    landLeaseCost: 2100,
     developmentStage: "PPA Secured"
   },
   {
@@ -225,6 +121,9 @@ const projects = [
     }
   }
 ];
+
+// Tipos de activo disponibles en el catálogo (derivado de los proyectos reales).
+const projectTypes = Array.from(new Set(projects.map(p => p.type)));
 
 const typeIcons = {
   Solar: Sun,
@@ -259,17 +158,9 @@ const teaserFiles = {
   1: '/teasers/Andalucia_Solar_Teaser_01.pdf',
   2: '/teasers/Puglia_Agrisolare_Teaser_02.pdf',
   3: '/teasers/Alentejo_Solar_Teaser_03.pdf',
-  4: '/teasers/Sicilia_Teaser_04.pdf',
   5: '/teasers/Loire_Valley_Teaser_05.pdf',
-  // 6:  '/teasers/Extremadura_Solar_Teaser_06.pdf',
-  // 7:  '/teasers/Sardegna_Wind_Teaser_07.pdf',
-  // 8:  '/teasers/Brandenburg_Solar_Teaser_08.pdf',
-  // 9:  '/teasers/Castilla_Solar_Teaser_09.pdf',
-  // 10: '/teasers/Algarve_Solar_Teaser_10.pdf',
-  // 11: '/teasers/Provence_Wind_Teaser_11.pdf',
-  // 12: '/teasers/Saxony_Solar_Teaser_12.pdf',
-  // 13: '/teasers/Occitanie_Solar_Teaser_13.pdf',
-  // 14: '/teasers/Lower_Saxony_Wind_Teaser_14.pdf',
+  // 6: '/teasers/Extremadura_Solar_Teaser_06.pdf',
+  // 8: '/teasers/Brandenburg_Solar_Teaser_08.pdf',
 };
 
 function ProjectCard({ project, onClick, hasNBO, isLoggedIn }) {
@@ -1166,6 +1057,7 @@ export default function RenewableMarketplace() {
     energyPrice: '', energyType: 'ppa', ppaTerm: '',
     usefulLife: '', leaseCost: '', interconnection: '',
     priceConditions: [],
+    priceAdjustments: {},
     milestones: {},
     financing: 'equity',
     exclusivityMonths: '', validityDays: '',
@@ -1195,9 +1087,33 @@ export default function RenewableMarketplace() {
       : [...prev.priceConditions, id]
   }));
   const setMilestone = (id, val) => setNboForm(prev => ({ ...prev, milestones: { ...prev.milestones, [id]: val } }));
+  const setPriceAdjustment = (id, val) => setNboForm(prev => ({ ...prev, priceAdjustments: { ...prev.priceAdjustments, [id]: val } }));
+
+  // Convierte el precio base (priceValue + priceUnit) a k€/MWp.
+  // €/Wp:  0,45 €/Wp = 450 k€/MWp  → ×1000.
+  // €/MWp: en este modelo el número equivale a M€/MWp (0,45 = 0,45 M€/MWp = 450 k€/MWp) → también ×1000.
+  const priceToKEurPerMWp = (value, _unit) => (parseFloat(value) || 0) * 1000;
+
+  // Resumen de precio en vivo. Solo cuentan los ajustes de condiciones ACTIVADAS.
+  const computePriceSummary = (form, project) => {
+    const baseKEurPerMWp = priceToKEurPerMWp(form.priceValue, form.priceUnit);
+    const activeConditions = form.priceConditions || [];
+    const details = activeConditions.map(id => {
+      const raw = form.priceAdjustments?.[id];
+      const value = parseFloat(raw);
+      return { id, value: Number.isFinite(value) ? value : 0, hasValue: raw !== '' && raw != null && Number.isFinite(value) };
+    });
+    const totalAdjustments = details.reduce((sum, d) => sum + d.value, 0);
+    const adjustedKEurPerMWp = baseKEurPerMWp + totalAdjustments;
+    const capacityMW = project?.capacity || 0;
+    const baseDealMEur = baseKEurPerMWp * capacityMW / 1000;
+    const adjustedDealMEur = adjustedKEurPerMWp * capacityMW / 1000;
+    return { baseKEurPerMWp, totalAdjustments, adjustedKEurPerMWp, capacityMW, baseDealMEur, adjustedDealMEur, details };
+  };
 
   const handleSubmitNBO = async () => {
     if (nboProject && nboForm.priceValue) {
+      const priceSummary = computePriceSummary(nboForm, nboProject);
       setSubmittedNBOs(prev => [...prev, {
         projectId: nboProject.id,
         projectName: nboProject.name,
@@ -1212,7 +1128,12 @@ export default function RenewableMarketplace() {
             user_id: currentUser.id,
             project_id: nboProject.id,
             project_name: nboProject.name,
-            clauses: [...selectedClauses, ...nboForm.priceConditions],
+            clauses: [
+              ...selectedClauses,
+              ...nboForm.priceConditions,
+              // Precio ajustado dentro del campo existente "clauses" para no romper el esquema actual.
+              `price_adjusted_keur_mwp:${Math.round(priceSummary.adjustedKEurPerMWp * 100) / 100}`,
+            ],
             price_offered: parseFloat(nboForm.priceValue) || null,
             price_unit: nboForm.priceUnit === 'eur_wp' ? 'eur_wp' : 'eur_mw',
             capacity_discount: nboForm.capacityReduction ? parseFloat(nboForm.capacityReduction) : null,
@@ -1231,12 +1152,27 @@ export default function RenewableMarketplace() {
         try {
           const unit = nboForm.priceUnit === 'eur_wp' ? '€/Wp' : '€/MWp';
           const payMap = { single: 'Pago único al cierre', milestones: 'Pagos por hitos (DSA)', equity_shl: 'Equity + préstamo participativo' };
-          const pcNames = nboForm.priceConditions.map(id => (priceConditions.find(x => x.id === id) || {}).name).filter(Boolean);
+          const fmtK = (n) => `${n.toLocaleString('es-ES', { maximumFractionDigits: 1 })} k€/MWp`;
+          const fmtKSigned = (n) => `${n > 0 ? '+' : ''}${n.toLocaleString('es-ES', { maximumFractionDigits: 1 })} k€/MWp`;
+          const fmtM = (n) => `${n.toLocaleString('es-ES', { maximumFractionDigits: 2 })} M€`;
+          // Cada condición de precio activada con su ajuste en k€/MWp (detalle de cada ajuste aplicado).
+          const pcNames = nboForm.priceConditions.map(id => {
+            const name = (priceConditions.find(x => x.id === id) || {}).name;
+            if (!name) return null;
+            const raw = nboForm.priceAdjustments?.[id];
+            const v = parseFloat(raw);
+            const hasVal = raw !== '' && raw != null && Number.isFinite(v);
+            return hasVal ? `${name}: ${v > 0 ? '+' : ''}${v} k€/MWp` : name;
+          }).filter(Boolean);
           const cpNames = selectedClauses.map(id => (nboClauses.find(x => x.id === id) || {}).name).filter(Boolean);
           const msNames = Object.entries(nboForm.milestones || {}).filter(([, v]) => v !== '' && v != null)
-            .map(([id, v]) => `${(milestones.find(x => x.id === id) || {}).name || id}: ${v}`);
+            .map(([id, v]) => `${(nboMilestones.find(x => x.id === id) || {}).name || id}: ${v}`);
           const lines = [];
           lines.push(`Precio ofertado: ${nboForm.priceValue} ${unit}`);
+          lines.push(`Resumen de precio (k€/MWp):`);
+          lines.push(`  · Precio indicativo (sin ajustes): ${fmtK(priceSummary.baseKEurPerMWp)} (${fmtM(priceSummary.baseDealMEur)})`);
+          lines.push(`  · Total de ajustes aplicados: ${fmtKSigned(priceSummary.totalAdjustments)}`);
+          lines.push(`  · Precio ajustado (con ajustes): ${fmtK(priceSummary.adjustedKEurPerMWp)} (${fmtM(priceSummary.adjustedDealMEur)})`);
           lines.push(`Forma de pago: ${payMap[nboForm.paymentForm] || nboForm.paymentForm}`);
           if (nboForm.spaPrice) lines.push(`Precio SPA: €${nboForm.spaPrice}`);
           if (nboForm.dsaPrice) lines.push(`Precio DSA: €${nboForm.dsaPrice}`);
@@ -1249,7 +1185,7 @@ export default function RenewableMarketplace() {
           if (nboForm.leaseCost) lines.push(`Coste arrendamiento: ${nboForm.leaseCost}`);
           if (nboForm.exclusivityMonths) lines.push(`Exclusividad: ${nboForm.exclusivityMonths} meses`);
           if (nboForm.validityDays) lines.push(`Validez de la oferta: ${nboForm.validityDays} días`);
-          if (pcNames.length) lines.push(`\nCondiciones de precio:\n- ${pcNames.join('\n- ')}`);
+          if (pcNames.length) lines.push(`\nCondiciones de precio y ajustes:\n- ${pcNames.join('\n- ')}`);
           if (msNames.length) lines.push(`\nHitos de pago:\n- ${msNames.join('\n- ')}`);
           if (cpNames.length) lines.push(`\nCondiciones suspensivas (CPs):\n- ${cpNames.join('\n- ')}`);
           const params = {
@@ -2036,8 +1972,9 @@ export default function RenewableMarketplace() {
                     className="appearance-none px-4 py-3 pr-10 bg-[#0c3941]/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-[#00B89F] cursor-pointer"
                   >
                     <option value="All">All Types</option>
-                    <option value="Solar">Solar</option>
-                    <option value="Wind">Wind</option>
+                    {projectTypes.map(type => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 pointer-events-none" />
                 </div>
@@ -2125,7 +2062,7 @@ export default function RenewableMarketplace() {
             <div className="max-w-4xl mx-auto">
               <div className="mb-8">
                 <h2 className="text-3xl font-bold text-white mb-2">Bids Leaderboard</h2>
-                <p className="text-slate-400">Top 12 projects ranked by number of bids submitted</p>
+                <p className="text-slate-400">Assets ranked by number of bids submitted</p>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
                 <div className="bg-[#0c3941]/50 backdrop-blur border border-slate-800 rounded-2xl p-6">
@@ -2151,7 +2088,7 @@ export default function RenewableMarketplace() {
                     if (b.bidCount !== a.bidCount) return b.bidCount - a.bidCount;
                     if (b.mostRecentBid !== a.mostRecentBid) return b.mostRecentBid - a.mostRecentBid;
                     return a.name.localeCompare(b.name);
-                  }).slice(0, 12);
+                  }).slice(0, projects.length);
                   if (submittedNBOs.length === 0) {
                     return (
                       <div className="text-center py-16 bg-[#0c3941]/50 border border-slate-800 rounded-2xl">
@@ -2621,14 +2558,31 @@ export default function RenewableMarketplace() {
                         const on = nboForm.priceConditions.includes(pc.id);
                         return (
                           <div key={pc.id} onClick={() => toggleNboPriceCond(pc.id)}
-                            className={`p-3 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${on ? 'bg-[#00B89F]/10 border-[#00B89F]/50' : 'bg-[#06252b]/60 border-white/10 hover:border-white/25'}`}>
-                            <div className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center ${on ? 'bg-[#00B89F] border-[#00B89F]' : 'border-slate-500'}`}>
-                              {on && <Check className="w-3 h-3 text-[#0c3941]" />}
+                            className={`p-3 rounded-xl border cursor-pointer transition-all ${on ? 'bg-[#00B89F]/10 border-[#00B89F]/50' : 'bg-[#06252b]/60 border-white/10 hover:border-white/25'}`}>
+                            <div className="flex items-start gap-3">
+                              <div className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center ${on ? 'bg-[#00B89F] border-[#00B89F]' : 'border-slate-500'}`}>
+                                {on && <Check className="w-3 h-3 text-[#0c3941]" />}
+                              </div>
+                              <div>
+                                <div className={`text-sm font-medium ${on ? 'text-[#33C9B5]' : 'text-white'}`}>{pc.name}</div>
+                                <div className="text-xs text-slate-400">{pc.description}</div>
+                              </div>
                             </div>
-                            <div>
-                              <div className={`text-sm font-medium ${on ? 'text-[#33C9B5]' : 'text-white'}`}>{pc.name}</div>
-                              <div className="text-xs text-slate-400">{pc.description}</div>
-                            </div>
+                            {on && (
+                              <div className="mt-3 ml-8 flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                <label className="text-xs text-slate-400">Price adjustment</label>
+                                <input
+                                  type="number" step="any"
+                                  value={nboForm.priceAdjustments[pc.id] ?? ''}
+                                  onChange={(e) => setPriceAdjustment(pc.id, e.target.value)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  placeholder="e.g. -10"
+                                  className="w-28 px-3 py-1.5 bg-[#06252b] border border-white/15 rounded-lg text-white text-right text-sm placeholder:text-slate-600 focus:outline-none focus:border-[#00B89F]"
+                                />
+                                <span className="text-xs text-slate-400">k€/MWp</span>
+                                <span className="text-[11px] text-slate-500">(+ sube el precio · − descuento)</span>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -2753,6 +2707,40 @@ export default function RenewableMarketplace() {
                       placeholder="e.g. 30" className="w-full px-4 py-2.5 bg-[#06252b] border border-white/15 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00B89F]" />
                   </div>
                 </div>
+              </div>
+
+              {/* Price summary */}
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-1">Resumen de precio</h3>
+                <p className="text-slate-400 text-sm mb-4">Se recalcula en vivo con el precio indicativo y los ajustes de las condiciones activadas. Todo en k€/MWp.</p>
+                {(() => {
+                  const s = computePriceSummary(nboForm, nboProject);
+                  const fmtK = (n) => `${n.toLocaleString('es-ES', { maximumFractionDigits: 1 })} k€/MWp`;
+                  const fmtKSigned = (n) => `${n > 0 ? '+' : ''}${n.toLocaleString('es-ES', { maximumFractionDigits: 1 })} k€/MWp`;
+                  const fmtM = (n) => `${n.toLocaleString('es-ES', { maximumFractionDigits: 2 })} M€`;
+                  return (
+                    <div className="rounded-2xl border border-[#00B89F]/20 bg-gradient-to-r from-[#00B89F]/10 to-[#00A88E]/10 p-6 space-y-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <div className="text-slate-300 text-sm">Precio indicativo (sin ajustes)</div>
+                          <div className="text-slate-500 text-xs mt-0.5">{fmtM(s.baseDealMEur)} · {s.capacityMW} MW</div>
+                        </div>
+                        <div className="text-xl font-bold text-white mono whitespace-nowrap">{fmtK(s.baseKEurPerMWp)}</div>
+                      </div>
+                      <div className="flex items-center justify-between gap-4 border-t border-white/10 pt-4">
+                        <div className="text-slate-300 text-sm">Total de ajustes aplicados</div>
+                        <div className={`text-xl font-bold mono whitespace-nowrap ${s.totalAdjustments > 0 ? 'text-amber-400' : s.totalAdjustments < 0 ? 'text-[#33C9B5]' : 'text-slate-400'}`}>{fmtKSigned(s.totalAdjustments)}</div>
+                      </div>
+                      <div className="flex items-center justify-between gap-4 border-t border-white/10 pt-4">
+                        <div>
+                          <div className="text-white text-sm font-semibold">Precio ajustado (con ajustes)</div>
+                          <div className="text-slate-500 text-xs mt-0.5">{fmtM(s.adjustedDealMEur)} · {s.capacityMW} MW</div>
+                        </div>
+                        <div className="text-2xl font-bold text-[#00B89F] mono whitespace-nowrap">{fmtK(s.adjustedKEurPerMWp)}</div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
